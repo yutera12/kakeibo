@@ -1,0 +1,54 @@
+main {
+    padding: 15px 0 0 0;
+    margin: 0 0 0 10px;
+}
+
+footer {
+    margin: 100px;
+    text-align: right;
+    font-size: 4px;
+}
+
+body {
+    padding: 55px 0 0 0;
+}
+
+.sidebar {
+    top:55px;
+    position: fixed;
+    bottom: 0px;
+    padding: 15px 0 0 0;
+}
+
+ul {
+    list-style: none;
+    padding-left: 20px;
+}
+
+.card{
+    width: 100%;
+    height: 100%;
+}
+
+textarea{
+    width: 100%
+}
+
+a.anchor{
+    display: block;
+    padding-top: 55px;
+    margin-top: -55px;
+}
+
+.year {
+    width: 60px;
+    height: 20px;
+}
+.month {
+    width: 40px;
+    height: 20px;
+}
+
+p {
+    margin: 0.1em 0px;
+}

@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <title>家計簿</title>
+  <link rel="icon" href="https://img.icons8.com/ios/50/000000/money-bag-yen.png" type="image/png"/>
+  <script src='https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.22/vue.min.js'></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.1/Chart.min.js"></script>
+  <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+  <div id = 'app'>
+    <div class="container-fluid">
+      <!--ナビゲーションウィンドウここから-->
+      <header>
+        <nav class="navbar navbar-expand navbar-dark bg-dark fixed-top">
+          <div class="navbar-brand">
+            家計簿
+          </div>
+          <div class="navbar-nav">
+            <a class="nav-item nav-link" href="menu">メニュー</a>
+            <a class="nav-item nav-link active" href="index">推移</a>
+            <a class="nav-item nav-link" href="month">月毎・年度毎</a>
+            <a class="nav-item nav-link" href="future">予測</a>
+          </div>
+        </nav>
+      </header>
+      <!--ナビゲーションウィンドウここまで-->
+
+      <div class="row">
+         <div class="col-2"></div>
+         <div class="col-2 bg-light sidebar overflow-auto">
+          <!--サイドバーここから-->
+          <aside>
+            <ul>
+              <li>
+                <img src="https://img.icons8.com/small/24/000000/settings.png"/>
+                <span class="navbar-text">設定</span>
+              </li>
+              <ul>
+                <li><select v-model="selectedOption" v-on:change="update">
+                  <option v-for="option in options" v-bind:value="option" v-bind:key="option">
+                    [[ option ]]
+                  </option>
+                </select></li>
+                <li><select v-model="selectedUnit" v-on:change="update">
+                  <option v-for="unit in units" v-bind:value="unit.id" v-bind:key="unit.id">
+                    [[ unit.name ]]
+                  </option>
+                </select></li>
+              </ul>
+              <li>
+                <img src="https://img.icons8.com/small/24/000000/link.png"/>
+                <span class="navbar-text">各項目へ移動</span>
+              </li>
+              <ul>
+                <li><a href="#link_asset">資産</a></li>
+                <li><a href="#link_inout">収支</a></li>
+                <li><a href="#link_in">収入</a></li>
+                <li><a href="#link_out1">支出大項目</a></li>
+                <li><a href="#link_out2">支出小項目</a></li>
+                <out2_bar v-bind:names="out2_name"></out2_bar>
+              </ul>
+            </ul>
+          </aside>
+          <!--サイドバーここまで-->
+        </div>
+        <div class="col-10">
+          <main>
+            <!--メインここから-->
+            <a id="link_asset" class="anchor"><h2>資産</h2></a>
+            <canvas id="canvas_asset" height="30%" width="100%"></canvas>
+            <tbl v-bind:data="tbl_asset"></tbl>
+
+            <a id="link_inout" class="anchor"><h2>収支</h2></a>
+            <canvas id="canvas_inout" height="30%" width="100%"></canvas>
+            <tbl v-bind:data="tbl_inout"></tbl>
+
+            <a id="link_in" class="anchor"><h2>収入</h2></a>
+            <canvas id="canvas_in" height="30%" width="100%"></canvas>
+            <tbl v-bind:data="tbl_in"></tbl>
+
+            <a id="link_out1" class="anchor"><h2>支出大項目</h2></a>
+            <canvas id="canvas_out1" height="30%" width="100%"></canvas>
+            <tbl v-bind:data="tbl_out1"></tbl>
+
+            <a id="link_out2" class="anchor"><h2>支出小項目</h2></a>
+            <out2_main v-bind:option="selectedOption" v-bind:names="out2_name" v-bind:tbls="out2_tbl"></out2_main>
+            <!--メインここまで-->
+          </main>
+          <footer>
+            <ul>
+              <li><a href="https://icons8.com/icon/34001/お金袋円">お金袋円 icon by Icons8</a></li>
+              <li><a href="https://icons8.com/icon/43556/settings">Settings icon by Icons8</a></li>
+              <li><a href="https://icons8.com/icon/45296/link">Link icon by Icons8</a></li>
+            </ul>
+          </footer>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const sleep = waitTime => new Promise( resolve => setTimeout(resolve, waitTime) );
+
+    const tblComponent = {
+      props: ['data'],
+      template: `
+        <table class="table table-striped table-sm table-hover">
+          <thead>
+            <tr align="right">
+              <th v-for = "col in data[0]">[[col]]</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr align="right" v-for = "line in data.slice(1)">
+              <td v-for = "dt in line">[[dt]]</td>
+            </tr>
+          </tbody>
+        </table>`,
+      delimiters: ['[[', ']]']
+    };
+
+    const out2_mainComponent = {
+      template: `
+        <div>
+          <div v-for="(name, index) in names">
+            <a v-bind:id="'link_out2_' + index" class="anchor"><h3>[[name]]</h3></a>
+            <canvas v-bind:id="'canvas_out2_' + index" height="30%" width="100%"></canvas>
+            <tbl v-bind:data="extract(tbls, index)"> </tbl>
+          </div>
+        </div>
+      `,
+      props: ["names", "tbls"],
+      methods: {
+        extract: function(list, index){
+          if (list.length <= index){
+            return [[]]
+          }else{
+            return list[index]
+          }
+        }
+      },
+      delimiters: ['[[', ']]'],
+      components: {"tbl": tblComponent}
+    };
+
+    const out2_barComponent = {
+      template: `
+        <ul>
+          <div v-for="(name, index) in names">
+            <li><a v-bind:href="'#link_out2_' + index">[[name]]</a></li>
+          </div>
+        </ul>
+      `,
+      props: ["names"],
+      methods: {
+        extract: function(list, index){
+          if (list.length <= index){
+            return [[]]
+          }else{
+            return list[index]
+          }
+        }
+      },
+      delimiters: ['[[', ']]']
+    }
+
+    app = new Vue({
+      el: '#app',
+      data:{
+        options: ['グラフ＆表', 'グラフのみ'],
+        selectedOption : 'グラフのみ',
+        units: [{id: 'year', name:'年度'}, {id: 'month', name:'月'}],
+        selectedUnit : 'month',
+        out2Len: 0,
+        tbl_asset: [[]],
+        tbl_inout: [[]],
+        tbl_in: [[]],
+        tbl_out1: [[]],
+        out2_name: [],
+        out2_tbl: [],
+        canvas_asset: '',
+        canvas_inout: '',
+        canvas_in: '',
+        canvas_out1: '',
+        canvas_out2: [],
+        created: false
+      },
+      components: {"tbl": tblComponent, "out2_main": out2_mainComponent, "out2_bar": out2_barComponent},
+      delimiters: ['[[', ']]'],
+
+      methods: {
+        update: function(){
+          // グラフの作成
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/asset,None", 'canvas_asset')
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/inout,None", 'canvas_inout')
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/in,None", 'canvas_in')
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/out1,None", 'canvas_out1')
+          for(var i=0; i<this.out2Len; i++) {
+            this.updateGraphOut2('/getGraph_index/' + this.selectedUnit + "/out2," + String(i), 'canvas_out2_' + String(i), i)
+          }
+          if (this.selectedOption == 'グラフ＆表'){
+            // 表の作成
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/asset,None', 'tbl_asset')
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/inout,None', 'tbl_inout')
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/in,None', 'tbl_in')
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/out1,None', 'tbl_out1')
+            this.out2_tbl = []
+            for(var i=0; i<this.out2Len; i++) {
+              path = '/getTable_index/' + this.selectedUnit + '/out2,' + String(i)
+              axios
+                .get(path)
+                .then(response => {
+                  this.out2_tbl.push(response.data);
+                })
+            }
+          } else {
+            // 表の削除
+            this.tbl_asset = [[]]
+            this.tbl_inout = [[]]
+            this.tbl_in = [[]]
+            this.tbl_out1 = [[]]
+            this.out2_tbl = []
+          }
+        },
+        updateTbl: function(path, prop){
+          axios
+            .get(path)
+            .then(response => {
+              this[prop] = response.data;
+            })
+        },
+        updateGraph: function(path, canvas){
+          axios
+            .get(path)
+            .then(response => {
+              var ctx = document.getElementById(canvas).getContext('2d')
+              if (this[canvas] == ''){
+              } else {
+                this[canvas].destroy()
+              }
+              var x = new Chart(ctx, response.data)
+              this[canvas] = x
+            })
+        },
+        updateGraphOut2: function(path, canvas, i){
+          axios
+            .get(path)
+            .then(response => {
+              var ctx = document.getElementById(canvas).getContext('2d')
+              if (this.canvas_out2[i] == ''){
+              } else {
+                this.canvas_out2[i].destroy()
+              }
+              var x = new Chart(ctx, response.data)
+              this.canvas_out2[i] = x
+            })
+        }
+      },
+      created: function(){
+        axios
+          .get('/getOut2')
+          .then(response => {
+            this.out2_name = response.data
+            this.out2Len = response.data.length
+            for(var i=0; i<this.out2Len; i++) {
+              this.canvas_out2.push('')
+            }
+            this.created = true
+          })
+      },
+      mounted: async function(){
+        while(!this.created){
+          await sleep(100)
+        }
+        this.update()
+      }
+    })
+
+  </script>
+
+</body>
+</html>

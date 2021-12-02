@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <title>家計簿</title>
+  <link rel="icon" href="https://img.icons8.com/ios/50/000000/money-bag-yen.png" type="image/png"/>
+  <script src='https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.22/vue.min.js'></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue-loading-overlay@3"></script>
+  <link href="https://cdn.jsdelivr.net/npm/vue-loading-overlay@3/dist/vue-loading.css" rel="stylesheet">
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+  <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+  <div id = 'app'>
+    <div class="container">
+      <loading :active.sync="isLoading"
+               :can-cancel="false"
+               :on-cancel="onCancel"
+               :is-full-page="true"></loading>
+
+      <!--ナビゲーションウィンドウここから-->
+      <nav class="navbar navbar-expand navbar-dark bg-dark fixed-top">
+        <div class="navbar-brand">家計簿</div>
+        <div class="navbar-nav">
+          <a class="nav-item nav-link active" href="menu">メニュー</a>
+          <a class="nav-item nav-link" href="index">推移</a>
+          <a class="nav-item nav-link" href="month">月毎・年度毎</a>
+          <a class="nav-item nav-link" href="future">予測</a>
+        </div>
+      </nav>
+      <!--ナビゲーションウィンドウここまで-->
+
+      <main>
+        <div class="row">
+          <div class="col-12">
+            <h2>設定</h2>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-4">
+            <div class="card overflow-auto">
+              <div class="card-body">
+                <h5 class="card-title">日時</h5>
+                <p>開始：
+                  <input type="number" class="year" min=1900 max=2100 v-model="start_year">年
+                  <input type="number" class="month" min=1 max=12 v-model="start_month">月
+                </p>
+                <p>締め：
+                  <input type="number" class="year" min=1900 max=2100 v-model="finish_year">年
+                  <input type="number" class="month" min=1 max=12 v-model="finish_month">月
+                </p>
+                <p>現在：
+                  <input type="number" class="year" min=1900 max=2100 v-model="current_year">年
+                  <input type="number" class="month" min=1 max=12 v-model="current_month">月
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="card">
+              <div class="card-body">
+                <h5 class="card-title">支出項目</h5>
+                <textarea v-model="sishutu_item" rows="4"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="card">
+              <div class="card-body">
+                <h5 class="card-title">収入項目</h5>
+                <textarea v-model="shunyu_item" rows="4"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class = "row">
+          <div class="col-8"></div>
+          <div class="col-4">
+            <div style="text-align: right;">
+              <button v-on:click="update" class="btn btn-secondary w-100" style="margin: 0.4rem;">反映</button>
+              <br>
+              [[ message_config ]]
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-12">
+            <h2>計算の実行</h2>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-8">
+            <div class="card overflow-auto">
+              <div class="card-body">
+                <h5 class="card-title">エクセルファイルのアップロード</h5>
+                <input @change="selectedFile" type="file" name="file">
+                <button v-on:click="upload" type="submit" class="btn btn-outline-primary" style="margin-right: 5px">アップロード</button>[[ message_upload ]]
+                <p class='small' style="margin-top: 10px">※選択しない場合、前回アップロードしたファイルが計算対象となります。</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div style="text-align: right; margin-top: 70px">
+              <button v-on:click="execute" class="btn btn-primary w-100">計算実行</button>
+            </div>
+            <div style="margin-top: 10px">
+              [[ message_execute ]]
+            </div>
+          </div>
+        </div>
+      </main>
+      <footer>
+        <ul>
+          <li><a href="https://icons8.com/icon/34001/お金袋円">お金袋円 icon by Icons8</a></li>
+        </ul>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    const Loading = window.VueLoading;
+    app = new Vue({
+      el: '#app',
+      data:{
+        start_year: 0,
+        start_month: 0,
+        finish_year: 0,
+        finish_month: 0,
+        current_year: 0,
+        current_month: 0,
+        sishutu_item: '',
+        shunyu_item: '',
+        message_config: '',
+        message_upload: '',
+        message_execute: '',
+        isLoading: false
+      },
+      mounted(){
+        axios
+          .get('/get_config')
+          .then(response => {
+            this.start_year = Number(response.data['開始月'][0]);
+            this.start_month = Number(response.data['開始月'][1]);
+            this.finish_year = Number(response.data['締め月'][0]);
+            this.finish_month = Number(response.data['締め月'][1]);
+            this.current_year = Number(response.data['現在月'][0]);
+            this.current_month = Number(response.data['現在月'][1]);
+            this.sishutu_item = ''
+            for (let i=0; i<response.data['支出項目'].length; i++) {
+              this.sishutu_item += ('- ' + '[' + response.data['支出項目'][i][0] + ', ' + JSON.stringify(response.data['支出項目'][i][1]).replaceAll('"', '')+']'+'\n')
+            }
+            this.shunyu_item = ''
+            for (let i=0; i<response.data['収入項目'].length; i++) {
+              this.shunyu_item += ('- ' + response.data['収入項目'][i] + '\n')
+            }
+          })
+      },
+      methods: {
+        update: function() {
+          axios
+            .post('/post_config', {'start': [Number(this.start_year), Number(this.start_month)],
+                                   'finish': [Number(this.finish_year), Number(this.finish_month)],
+                                   'current': [Number(this.current_year), Number(this.finish_month)],
+                                   'sishutu': this.sishutu_item,
+                                   'shunyu': this.shunyu_item})
+            .then(response => { this.message_config = ' 反映が完了しました'})
+            .catch(err => {alert(err)});
+
+        },
+        selectedFile: function(e) {
+          // 選択された File の情報を保存しておく
+          e.preventDefault();
+          let files = e.target.files;
+          this.uploadFile = files[0];
+        },
+        upload: function() {
+          // FormData を利用して File を POST する
+          let formData = new FormData();
+          formData.append('yourFileKey', this.uploadFile);
+          let config = {
+            headers: {
+              'content-type': 'multipart/form-data'
+            }
+          };
+          axios.post('/data/upload', formData, config)
+            .then(function(response) {
+              app['message_upload'] = response.data['result']
+            })
+            .catch(function(error) {
+              app['message_upload'] = 'エラー'
+            })
+        },
+        execute: function() {
+          this.message_execute = '計算中'
+          this.isLoading = true
+          axios
+            .post('/execute', {}, {})
+            .then(res=>{
+              app['isLoading'] = false
+              app['message_execute'] = '計算結果を表示します';
+              location.href='/index'
+            })
+        },
+        onCancel: function() {
+          console.log('User cancelled the loader.')
+        }
+      },
+      components: {
+        "loading":Loading
+      },
+      delimiters: ['[[', ']]']
+    })
+  </script>
+
+</body>
+</html>
