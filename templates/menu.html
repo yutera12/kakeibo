@@ -163,7 +163,7 @@
           axios
             .post('/post_config', {'start': [Number(this.start_year), Number(this.start_month)],
                                    'finish': [Number(this.finish_year), Number(this.finish_month)],
-                                   'current': [Number(this.current_year), Number(this.finish_month)],
+                                   'current': [Number(this.current_year), Number(this.current_month)],
                                    'sishutu': this.sishutu_item,
                                    'shunyu': this.shunyu_item})
             .then(response => { this.message_config = ' 反映が完了しました'})
