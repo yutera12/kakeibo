@@ -6,11 +6,6 @@ from pprint import pprint
 import argparse
 import pickle
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--config', default="data/config.yaml")
-parser.add_argument('--data', default="data/kakeibo.xlsx")
-args = parser.parse_args()
-
 def none2int(val):
     if val is None:
         output = 0
@@ -177,7 +172,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-config', default="sample/config.yaml")
-    parser.add_argument('-data', default="sample/kakeibo.xlsx")
+    parser.add_argument('--config', default="sample/config.yaml")
+    parser.add_argument('--data', default="sample/kakeibo.xlsx")
     args = parser.parse_args()
     main(args)
