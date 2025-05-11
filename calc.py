@@ -77,7 +77,7 @@ def main(args):
     for month in calcMonthList(config["開始月"], config["現在月"])["月"]:
         nyukin = int(df_data.query('yyyymm==@month & 分類=="移動"')["入金"].sum())
         shukkin = int(df_data.query('yyyymm==@month & 分類=="移動"')["出金"].sum())
-        assert nyukin == shukkin, "移動のデータが不整合です"
+        assert nyukin == shukkin, f"{month}の移動のデータが不整合です。入金が{nyukin}、出金が{shukkin}"
 
     # 計算
     print( "--計算中--")
