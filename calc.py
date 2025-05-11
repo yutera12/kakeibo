@@ -42,6 +42,8 @@ def main(args):
     print("--configファイルの読み込み中--")
     with open(args.config, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
+    assert config["開始月"] <= config["締め月"] <= config["現在月"]
+
     out2List = [item for _, items in config["支出項目"] for item in items]
     out1List = [category for category, _ in config["支出項目"] if category != "NA"]
 
@@ -64,6 +66,22 @@ def main(args):
                 assert x == "移動" or x in config["収入項目"] + out2List, "{}シートの{}行目のデータの分類「{}」が不適切です".format(sheetName, j, x)
         for j, x in enumerate(df_tmp["yyyymm"].values):
             assert not np.isnan(x), "{}シートの{}行目のデータのyyyymmが入力されていません。".format(sheetName, j)
+        for j in range(len(df_tmp)):
+            assert 190000 < df_tmp.loc[j, "yyyymm"] < 210000, f"{sheetName}のyyyymmが不正"
+        for j in range(len(df_tmp) - 1):
+            assert df_tmp.loc[j, "yyyymm"] <= df_tmp.loc[j + 1, "yyyymm"], f"{sheetName}のyyyymmが不正"
+
+        prev_zandaka = df_tmp.loc[0, "残高"]       
+        for month in calcMonthList(config["開始月"], config["現在月"])["月"]:
+            if len(df_tmp.loc[df_tmp["yyyymm"] == month, :]) == 0:
+                continue
+            zandaka = df_tmp.loc[df_tmp["yyyymm"] == month, "残高"].iloc[-1]
+            nyukin = sum(df_tmp.loc[df_tmp["yyyymm"] == month, "入金"])
+            shukkin = sum(df_tmp.loc[df_tmp["yyyymm"] == month, "出金"])
+            assert prev_zandaka + nyukin - shukkin == zandaka, f"{sheetName}の"
+            prev_zandaka = zandaka
+
+
         df_tmp["sheet"] = sheetNameList[i]
         df_tmp = df_tmp.astype({'yyyymm': str})
         if i == 0:
