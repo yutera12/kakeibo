@@ -100,19 +100,22 @@ def main(args):
     # 計算
     print( "--計算中--")
     df_month = {}
-    df_month["basic"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=["資産", "収入", "支出", "収支"])
+    df_month["basic"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=list(config["資産項目"].keys())+["収入", "支出", "収支"])
     df_month["in"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=[x for x in config["収入項目"]])
     df_month["out2"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=[x for x in out2List])
     df_month["out1"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=[x for x in out1List if x != "NA"])
-    for sheetName in sheetNameList:
-        zandakaOld = 0
-        for month in df_month["basic"].index:
-            zan = df_data.query('yyyymm==@month and sheet==@sheetName')["残高"].values
-            if len(zan) == 0:
-                df_month["basic"].loc[month, "資産"] += zandakaOld
-            else:
-                df_month["basic"].loc[month, "資産"] += int(zan[-1])
-                zandakaOld = int(zan[-1])
+    for k, v in config["資産項目"].items():
+        for sheetName in sheetNameList:
+            if sheetName in v:
+                zandakaOld = 0
+                for month in df_month["basic"].index:
+                    zan = df_data.query('yyyymm==@month and sheet==@sheetName')["残高"].values
+                    if len(zan) == 0:
+                        df_month["basic"].loc[month, k] += zandakaOld
+                    else:
+                        df_month["basic"].loc[month, k] += int(zan[-1])
+                        zandakaOld = int(zan[-1])
+
     for month in tqdm(df_month["basic"].index):
         nyukin = (df_data.query('yyyymm==@month & 分類!="移動"')["入金"].sum())
         shukkin = (df_data.query('yyyymm==@month & 分類!="移動"')["出金"].sum())
@@ -137,13 +140,12 @@ def main(args):
     monthOld = None
     for month in calcMonthList(config["開始月"], config["現在月"])["月"]:
         if monthOld != None:
-            assert df_month["basic"].loc[month, "資産"] - df_month["basic"].loc[monthOld, "資産"] == df_month["basic"].loc[month, "収支"], \
+            assert df_month["basic"].loc[month, list(config["資産項目"].keys())].sum() - df_month["basic"].loc[monthOld, list(config["資産項目"].keys())].sum() == df_month["basic"].loc[month, "収支"], \
                   "エラー\n{}の資産は{}\n{}の資産は{}\n差額は{}\nしかし{}の収支が{}です。".format(\
-                          monthOld, df_month["basic"].loc[monthOld, "資産"], month,  df_month["basic"].loc[month, "資産"],\
-                          df_month["basic"].loc[month, "資産"] - df_month["basic"].loc[monthOld, "資産"],\
+                          monthOld, df_month["basic"].loc[monthOld, list(config["資産項目"].keys())].sum(), month,  df_month["basic"].loc[month, list(config["資産項目"].keys())].sum(),\
+                          df_month["basic"].loc[month, list(config["資産項目"].keys())].sum() - df_month["basic"].loc[monthOld, list(config["資産項目"].keys())].sum(),\
                           month,  df_month["basic"].loc[month, "収支"])
         monthOld = month
-
     # 年用
     yearList = calcMonthList(config["開始月"], config["現在月"])["年度+月"]
     df_year = {}
@@ -153,7 +155,7 @@ def main(args):
             for year in yearList:
                 x = 0
                 for month in year[1]:
-                    if col == '資産':
+                    if col in list(config["資産項目"].keys()):
                         x = int(df_month[key][col][month])
                     else:
                         x += int(df_month[key][col][month])
@@ -168,7 +170,8 @@ def main(args):
     shusiPredict = {}
     for month in calcMonthList(config["開始月"], config["締め月"])["月"]:
         shusiPredict[month[4:7]] = df_month["basic"].loc[month, "収支"]
-    zandaka = df_month["basic"]['資産']
+    zandaka = df_month["basic"].loc[:, list(config["資産項目"].keys())].sum(axis=1)
+
     money_old = 0
     for month in df_future.index:
         money = zandaka.get(month)

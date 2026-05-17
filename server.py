@@ -1,11 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for, make_response, jsonify
-import werkzeug
+from flask import Flask, render_template, request, make_response, jsonify
 import json
-import pandas as pd
-import numpy as np
 import pickle
 import os
-from datetime import datetime
 import yaml
 
 def read_df_month():
@@ -71,7 +67,7 @@ def getTable_index(my, item):
     if slct == "asset":
         df = df["basic"].drop(columns=["収入", "支出", "収支"])
     elif slct == "inout":
-        df = df["basic"].drop(columns="資産")
+        df = df["basic"].loc[:, ["収入", "支出", "収支"]]
     elif slct == "out1":
         df = df["out1"]
     elif slct == "out2":
@@ -92,13 +88,15 @@ def getTable_index(my, item):
 
 @app.route('/getGraph_index/<my>/<item>/')
 def getGraph_index(my, item):
+    with open('config.yaml', "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
     slct, out2Num = item.split(",")
     if my == 'year':
         df = read_df_year()
     elif my == 'month':
         df = read_df_month()
     if slct == "inout":
-        df = df["basic"].drop(columns="資産")
+        df = df["basic"].drop(columns= list(config["資産項目"].keys()))
         chartData = {}
         chartData["labels"] = df.index.tolist()
         chartData["datasets"] = []
@@ -116,10 +114,26 @@ def getGraph_index(my, item):
         out = {}
         out["type"] = "bar"
         out["data"] = chartData
-        out["options"] = {"responsive": True, "tooltips": {"mode": "index", "intersect": True},
-                          "elements": {"line": {"tension": 0.0001}},
-                          "scales"  : {"yAxes": [{"ticks": {"beginAtZero": True}}]}
-                         }
+        yAxesConf = None
+        if config["yAxes"].get("収支"):
+            if my == "year":
+                yAxesConf = config["yAxes"].get("収支").get("year")
+            elif my == "month":
+                yAxesConf = config["yAxes"].get("収支").get("month")
+        if yAxesConf:
+            out["options"] = {
+                "responsive": True,
+                "tooltips": {"mode": "index", "intersect": True},
+                "elements": {"line": {"tension": 0.0001}},
+                "scales"  : {"yAxes": [{"ticks": {"beginAtZero": True, "min": yAxesConf["min"], "max": yAxesConf["max"]}}]}
+            }
+        else:
+            out["options"] = {
+                "responsive": True,
+                "tooltips": {"mode": "index", "intersect": True},
+                "elements": {"line": {"tension": 0.0001}},
+                "scales"  : {"yAxes": [{"ticks": {"beginAtZero": True}}]}
+            }
     else:
         if slct == "out1":
             df = df["out1"]
@@ -131,10 +145,27 @@ def getGraph_index(my, item):
             df = df["basic"].drop(columns=["収入", "支出", "収支"])
         out = {}
         out["type"] = "line"
-        out["options"] = {"elements": {"line": {"tension": 0.0001}},
-                          "scales"  : {"yAxes":[{"stacked": True, "ticks": {"beginAtZero": True}}]},
-                          "legend": {"display": True}
-                         }
+
+        yAxesConf = None
+        if slct == "in":
+            if config["yAxes"].get("収入"):
+                if my == "year":
+                    yAxesConf = config["yAxes"].get("収入").get("year")
+                elif my == "month":
+                    yAxesConf = config["yAxes"].get("収入").get("month")
+        if yAxesConf:
+            out["options"] = {
+                "elements": {"line": {"tension": 0.0001}},
+                "scales"  : {"yAxes":[{"stacked": True, "ticks": {"beginAtZero": True, "min": yAxesConf["min"], "max": yAxesConf["max"]}}]},
+                "legend": {"display": True}
+            }
+        else:
+            out["options"] = {
+                "elements": {"line": {"tension": 0.0001}},
+                "scales"  : {"yAxes":[{"stacked": True, "ticks": {"beginAtZero": True}}]},
+                "legend": {"display": True}
+            }
+            
         out["data"] = {}
         out["data"]["labels"] = df.index.tolist()
         out["data"]["datasets"] = []
@@ -192,7 +223,7 @@ def getTable_snapMonth(slct, my):
     elif slct == "out":
         df = df["out2"]
     elif slct == "inout":
-        df = df["basic"].drop(columns="資産")
+        df = df["basic"].loc[:, ["収入", "支出", "収支"]]
     if my == "undefined":
         my = df.index[-1]
     out = []
