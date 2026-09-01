@@ -4,17 +4,17 @@ import pickle
 import os
 import yaml
 
-def read_df_month():
+def read_monthly_data():
     with open('monthly_data.pkl', mode='rb') as f:
         df = pickle.load(f)
     return df
 
-def read_df_year():
+def read_yearly_data():
     with open('yearly_data.pkl', mode='rb') as f:
         df = pickle.load(f)
     return df
 
-def read_df_future():
+def read_forecast_data():
     with open('forecast_data.pkl', mode='rb') as f:
         df = pickle.load(f)
     return df
@@ -39,17 +39,17 @@ app.config['JSON_AS_ASCII'] = False
 #########
 @app.route('/getOut2')
 def getOut2():
-    df = read_df_month()
+    df = read_monthly_data()
     return json.dumps(df["expense_subcategory"].columns.tolist(), ensure_ascii=False)
 
 @app.route('/getMonth')
 def getMonth():
-    df = read_df_month()
+    df = read_monthly_data()
     return json.dumps(df["basic"].index.tolist(), ensure_ascii=False)
 
 @app.route('/getYear')
 def getYear():
-    df = read_df_year()
+    df = read_yearly_data()
     return json.dumps(df["basic"].index.tolist(), ensure_ascii=False)
 
 ################
@@ -59,10 +59,10 @@ def getYear():
 def getTable_index(my, item):
     slct, out2Num = item.split(",")
     if my == 'year':
-        df = read_df_year()
+        df = read_yearly_data()
         col = '年度'
     elif my == 'month':
-        df = read_df_month()
+        df = read_monthly_data()
         col = '月'
     if slct == "asset":
         df = df["basic"].drop(columns=["収入", "支出", "収支"])
@@ -92,9 +92,9 @@ def getGraph_index(my, item):
         config = yaml.safe_load(f)
     slct, out2Num = item.split(",")
     if my == 'year':
-        df = read_df_year()
+        df = read_yearly_data()
     elif my == 'month':
-        df = read_df_month()
+        df = read_monthly_data()
     if slct == "inout":
         df = df["basic"].drop(columns= list(config["資産項目"].keys()))
         chartData = {}
@@ -187,9 +187,9 @@ def getGraph_index(my, item):
 @app.route('/getGraph_snapMonth/<slct>/<my>')
 def getGraph_snapMonth(slct, my):
     if len(my) == 6:
-        df = read_df_month()
+        df = read_monthly_data()
     elif len(my) == 4:
-        df = read_df_year()
+        df = read_yearly_data()
     else:
         df = df_month
     if slct == "out":
@@ -213,9 +213,9 @@ def getGraph_snapMonth(slct, my):
 @app.route('/getTable_snapMonth/<slct>/<my>')
 def getTable_snapMonth(slct, my):
     if len(my) == 6:
-        df = read_df_month()
+        df = read_monthly_data()
     elif len(my) == 4:
-        df = read_df_year()
+        df = read_yearly_data()
     else:
         raise XXX
     if slct == "in":
@@ -241,7 +241,7 @@ def getTable_snapMonth(slct, my):
 #################
 @app.route('/getTable_future')
 def getTable_future():
-    df_future = read_df_future()
+    df_future = read_forecast_data()
     out = []
     out.append([])
     out[-1].append("月")
@@ -256,7 +256,7 @@ def getTable_future():
 
 @app.route('/getGraph_future')
 def getGraph_future():
-    df_future = read_df_future()
+    df_future = read_forecast_data()
     out = {}
     out["type"] = "line"
     out["options"] = {"elements": {"line": {"tension": 0.0001}},
