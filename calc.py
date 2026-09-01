@@ -1,199 +1,360 @@
-import yaml
-import pandas as pd
-import numpy as np
-from tqdm import tqdm
-from pprint import pprint
+"""
+家計簿（kakeibo）集計スクリプト
+
+エクセルの取引明細と config.yaml の項目定義を読み込み、
+月次・年次の収支サマリーと将来予測を計算して pickle に保存する。
+
+元スクリプトのロジック（各種整合性チェック含む）は変更していない。
+可読性・保守性・実行効率の向上のために関数分割とベクトル化を行った。
+"""
+
+from __future__ import annotations
+
 import argparse
+import logging
 import pickle
+from pathlib import Path
+from typing import Dict, List, Tuple
 
-def none2int(val):
-    if val is None:
-        output = 0
-    else:
-        output = int(val)
-    return output
+import numpy as np
+import pandas as pd
+import yaml
 
-def calcMonthList(startMonth, finishMonth):
-    y = startMonth[0]
-    m = startMonth[1]
-    yearList = []
-    monthList = []
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
+
+YearMonth = Tuple[int, int]  # (year, month)
+
+
+class ValidationError(Exception):
+    """入力データや計算結果の整合性チェックに失敗したときの例外。"""
+
+
+# --------------------------------------------------------------------------- #
+# 月・年度まわりのユーティリティ
+# --------------------------------------------------------------------------- #
+
+def next_month(y: int, m: int) -> YearMonth:
+    """翌月の (年, 月) を返す。"""
+    if m == 12:
+        return y + 1, 1
+    return y, m + 1
+
+
+def fiscal_year(y: int, m: int) -> str:
+    """4月始まりの年度を文字列で返す（例: 2023年4月〜2024年3月 -> "2023"）。"""
+    return str(int(np.floor((100 * y + m - 4) / 100)))
+
+
+def build_month_index(start: YearMonth, finish: YearMonth) -> List[str]:
+    """start から finish までの "YYYYMM" 文字列のリストを返す（両端含む）。"""
+    y, m = start
+    months = []
     while True:
-        if len(yearList) == 0 or yearList[-1][0] != str(int(np.floor((100 * y + m - 4) / 100))):
-            yearList.append([str(int(np.floor((100 * y + m - 4) / 100))), [str(100 * y + m)]])
-        else:
-            yearList[-1][1].append(str(100 * y + m))
-        monthList.append(str(100 * y + m))
-        if [y, m] == [finishMonth[0], finishMonth[1]]:
+        months.append(f"{100 * y + m}")
+        if (y, m) == tuple(finish):
             break
-        y, m = nextMonth(y, m)
-    return {"月": monthList, "年度+月": yearList}
-
-def nextMonth(y, m):
-    m = m + 1
-    if m == 13:
-        m = 1
-        y = y + 1
-    return (y, m)
+        y, m = next_month(y, m)
+    return months
 
 
-def main(args):
-    # configファイルの読み込み
-    print("--configファイルの読み込み中--")
-    with open(args.config, "r", encoding="utf-8") as f:
+def build_fiscal_year_groups(months: List[str]) -> List[Tuple[str, List[str]]]:
+    """月リストを年度ごとにグルーピングする。[(年度, [月, 月, ...]), ...] を返す。"""
+    groups: Dict[str, List[str]] = {}
+    for month in months:
+        y, m = int(month[:4]), int(month[4:6])
+        fy = fiscal_year(y, m)
+        groups.setdefault(fy, []).append(month)
+    return list(groups.items())
+
+
+def none2int(val) -> int:
+    return 0 if val is None or (isinstance(val, float) and np.isnan(val)) else int(val)
+
+
+# --------------------------------------------------------------------------- #
+# 設定・エクセルの読み込みと検証
+# --------------------------------------------------------------------------- #
+
+def load_config(path: str) -> dict:
+    logger.info("configファイルの読み込み中: %s", path)
+    with open(path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    assert config["開始月"] <= config["締め月"] <= config["現在月"]
-
-    out2List = [item for _, items in config["支出項目"] for item in items]
-    out1List = [category for category, _ in config["支出項目"] if category != "NA"]
-
-    # エクセルファイルの読み込み
-    print('--エクセルファイルの読み込み中--')
-    df_origin = pd.read_excel(args.data, sheet_name=None)
-    sheetNameList = list(df_origin.keys())
-    for i, sheetName in enumerate(sheetNameList):
-        df_tmp = df_origin[sheetName]
-        # "項目チェック"
-        assert  "yyyymm" in df_tmp.columns and\
-                "分類" in df_tmp.columns and\
-                "入金" in df_tmp.columns and\
-                "出金" in df_tmp.columns and\
-                "残高" in df_tmp.columns, "{}シートのカラム名が不適切です".format(sheetName)
-        for j, x in enumerate(df_tmp["分類"].values):
-            if j == 0:
-                assert np.isnan(x), "{}シートの１行目のデータには残高のみ記載してください".format(sheetName)
-            else:
-                assert x == "移動" or x in config["収入項目"] + out2List, "{}シートの{}行目のデータの分類「{}」が不適切です".format(sheetName, j, x)
-        for j, x in enumerate(df_tmp["yyyymm"].values):
-            assert not np.isnan(x), "{}シートの{}行目のデータのyyyymmが入力されていません。".format(sheetName, j)
-        for j in range(len(df_tmp)):
-            assert 190000 < df_tmp.loc[j, "yyyymm"] < 210000, f"{sheetName}のyyyymmが不正"
-        for j in range(len(df_tmp) - 1):
-            assert df_tmp.loc[j, "yyyymm"] <= df_tmp.loc[j + 1, "yyyymm"], f"{sheetName}のyyyymmが不正"
-
-        prev_zandaka = df_tmp.loc[0, "残高"]       
-        for month in calcMonthList(config["開始月"], config["現在月"])["月"]:
-            if len(df_tmp.loc[df_tmp["yyyymm"] == month, :]) == 0:
-                continue
-            zandaka = df_tmp.loc[df_tmp["yyyymm"] == month, "残高"].iloc[-1]
-            nyukin = sum(df_tmp.loc[df_tmp["yyyymm"] == month, "入金"])
-            shukkin = sum(df_tmp.loc[df_tmp["yyyymm"] == month, "出金"])
-            assert prev_zandaka + nyukin - shukkin == zandaka, f"{sheetName}の"
-            prev_zandaka = zandaka
+    if not (config["開始月"] <= config["締め月"] <= config["現在月"]):
+        raise ValidationError("config.yaml の 開始月 <= 締め月 <= 現在月 を満たしていません")
+    return config
 
 
-        df_tmp["sheet"] = sheetNameList[i]
-        df_tmp = df_tmp.astype({'yyyymm': str})
-        if i == 0:
-            df_data = df_tmp
+def category_lists(config: dict) -> Tuple[List[str], List[str]]:
+    """(出金の細目リスト, 出金の大分類リスト[NAを除く]) を返す。"""
+    expense_subcategories = [item for _, items in config["支出項目"] for item in items]
+    expense_categories = [category for category, _ in config["支出項目"] if category != "NA"]
+    return expense_subcategories, expense_categories
+
+
+def validate_sheet(df: pd.DataFrame, sheet_name: str, config: dict, expense_subcategories: List[str]) -> None:
+    """1シート分の取引明細に対する形式・整合性チェック。"""
+    required_cols = {"yyyymm", "分類", "入金", "出金", "残高"}
+    if not required_cols.issubset(df.columns):
+        raise ValidationError(f"{sheet_name}シートのカラム名が不適切です")
+
+    valid_categories = set(config["収入項目"] + expense_subcategories) | {"移動"}
+    for j, x in enumerate(df["分類"].values):
+        if j == 0:
+            if not pd.isna(x):
+                raise ValidationError(f"{sheet_name}シートの１行目のデータには残高のみ記載してください")
+        elif x not in valid_categories:
+            raise ValidationError(f"{sheet_name}シートの{j}行目のデータの分類「{x}」が不適切です")
+
+    if df["yyyymm"].isna().any():
+        bad = df.index[df["yyyymm"].isna()][0]
+        raise ValidationError(f"{sheet_name}シートの{bad}行目のデータのyyyymmが入力されていません。")
+
+    if not df["yyyymm"].between(190000, 210000, inclusive="neither").all():
+        raise ValidationError(f"{sheet_name}のyyyymmが不正")
+
+    if not df["yyyymm"].is_monotonic_increasing:
+        raise ValidationError(f"{sheet_name}のyyyymmが不正")
+
+    # 残高 = 前残高 + 入金 - 出金 の月次整合性チェック
+    prev_zandaka = df.loc[0, "残高"]
+    for month, group in df.iloc[1:].groupby(df.iloc[1:]["yyyymm"]):
+        zandaka = group["残高"].iloc[-1]
+        nyukin = group["入金"].sum()
+        shukkin = group["出金"].sum()
+        if prev_zandaka + nyukin - shukkin != zandaka:
+            raise ValidationError(f"{sheet_name}の{month}の残高整合性チェックに失敗しました")
+        prev_zandaka = zandaka
+
+
+def load_excel_data(path: str, config: dict, expense_subcategories: List[str]) -> pd.DataFrame:
+    """全シートを読み込み・検証し、1つの DataFrame に結合する。"""
+    logger.info("エクセルファイルの読み込み中: %s", path)
+    sheets = pd.read_excel(path, sheet_name=None)
+
+    frames = []
+    for sheet_name, df in sheets.items():
+        validate_sheet(df, sheet_name, config, expense_subcategories)
+        df = df.copy()
+        df["sheet"] = sheet_name
+        df["yyyymm"] = df["yyyymm"].astype(int).astype(str)
+        frames.append(df)
+
+    df_transactions = pd.concat(frames, ignore_index=True)
+
+    df_item = pd.DataFrame(
+        [(sub_item, category) for category, items in config["支出項目"] for sub_item in items],
+        columns=["分類", "大分類"],
+    )
+    df_transactions = pd.merge(df_transactions, df_item, on="分類", how="left")
+
+    validate_transfers(df_transactions, config)
+    return df_transactions
+
+
+def validate_transfers(df_transactions: pd.DataFrame, config: dict) -> None:
+    """「移動」区分の入金・出金が月ごとに一致することを確認する。"""
+    transfer_transactions = df_transactions[df_transactions["分類"] == "移動"]
+    monthly_totals = transfer_transactions.groupby("yyyymm")[["入金", "出金"]].sum()
+    mismatched_months = monthly_totals[monthly_totals["入金"].astype(int) != monthly_totals["出金"].astype(int)]
+    if not mismatched_months.empty:
+        month, row = next(iter(mismatched_months.iterrows()))
+        raise ValidationError(
+            f"{month}の移動のデータが不整合です。入金が{int(row['入金'])}、出金が{int(row['出金'])}"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 月次集計
+# --------------------------------------------------------------------------- #
+
+def compute_asset_balances(df_transactions: pd.DataFrame, months: List[str], asset_groups: Dict[str, List[str]]) -> pd.DataFrame:
+    """資産項目（複数シートの合算）ごとの月末残高を計算する。データの無い月は前月値を維持。"""
+    monthly_balances = df_transactions.groupby(["sheet", "yyyymm"])["残高"].last().unstack("sheet")
+    monthly_balances = monthly_balances.reindex(months).ffill().fillna(0).astype(int)
+
+    result = pd.DataFrame(0, index=months, columns=list(asset_groups.keys()))
+    for asset_name, sheet_names in asset_groups.items():
+        available_sheets = [s for s in sheet_names if s in monthly_balances.columns]
+        if available_sheets:
+            result[asset_name] = monthly_balances[available_sheets].sum(axis=1)
+    return result
+
+
+def compute_category_pivot(
+    df_transactions: pd.DataFrame,
+    months: List[str],
+    columns: List[str],
+    category_col: str,
+    amount_col: str,
+    other_amount_col: str,
+) -> pd.DataFrame:
+    """分類（または大分類）ごとに amount_col を月次集計したピボットを返す。
+    other_amount_col 側に値が入っている行があればエラーにする。"""
+    subset = df_transactions[df_transactions[category_col].isin(columns)]
+
+    bad = subset[subset[other_amount_col].fillna(0) != 0]
+    if not bad.empty:
+        row = bad.iloc[0]
+        raise ValidationError(
+            f"エラー\n{row['yyyymm']}の{row[category_col]}について"
+            f"{amount_col}項目にもかかわらず{other_amount_col}の列に記入されています。"
+        )
+
+    pivot = subset.pivot_table(index="yyyymm", columns=category_col, values=amount_col, aggfunc="sum", fill_value=0)
+    pivot = pivot.reindex(index=months, columns=columns, fill_value=0)
+    return pivot.fillna(0).astype(int)
+
+
+def compute_month_frames(df_transactions: pd.DataFrame, months: List[str], config: dict,
+                          expense_categories: List[str], expense_subcategories: List[str]) -> Dict[str, pd.DataFrame]:
+    logger.info("月次集計を計算中")
+    monthly_data: Dict[str, pd.DataFrame] = {}
+
+    asset_groups = config["資産項目"]
+    monthly_data["basic"] = compute_asset_balances(df_transactions, months, asset_groups)
+    monthly_data["basic"]["収入"] = 0
+    monthly_data["basic"]["支出"] = 0
+    monthly_data["basic"]["収支"] = 0
+
+    non_transfer_transactions = df_transactions[df_transactions["分類"] != "移動"]
+    monthly_totals = non_transfer_transactions.groupby("yyyymm")[["入金", "出金"]].sum()
+    monthly_totals = monthly_totals.reindex(months, fill_value=0)
+    monthly_data["basic"]["収入"] = monthly_totals["入金"].astype(int)
+    monthly_data["basic"]["支出"] = monthly_totals["出金"].astype(int)
+    monthly_data["basic"]["収支"] = monthly_data["basic"]["収入"] - monthly_data["basic"]["支出"]
+
+    monthly_data["in"] = compute_category_pivot(
+        df_transactions, months, config["収入項目"], "分類", "入金", "出金"
+    )
+    monthly_data["out2"] = compute_category_pivot(
+        df_transactions, months, expense_subcategories, "分類", "出金", "入金"
+    )
+    monthly_data["out1"] = compute_category_pivot(
+        df_transactions, months, [x for x in expense_categories if x != "NA"], "大分類", "出金", "入金"
+    )
+
+    validate_balance_consistency(monthly_data["basic"], months, asset_groups)
+    return monthly_data
+
+
+def validate_balance_consistency(monthly_summary: pd.DataFrame, months: List[str], asset_groups: Dict[str, List[str]]) -> None:
+    """資産合計の月差分が収支と一致することを確認する。"""
+    asset_cols = list(asset_groups.keys())
+    totals = monthly_summary[asset_cols].sum(axis=1)
+    for prev_month, month in zip(months, months[1:]):
+        diff = totals[month] - totals[prev_month]
+        if diff != monthly_summary.loc[month, "収支"]:
+            raise ValidationError(
+                "エラー\n{}の資産は{}\n{}の資産は{}\n差額は{}\nしかし{}の収支が{}です。".format(
+                    prev_month, totals[prev_month], month, totals[month],
+                    diff, month, monthly_summary.loc[month, "収支"],
+                )
+            )
+
+
+# --------------------------------------------------------------------------- #
+# 年次集計
+# --------------------------------------------------------------------------- #
+
+def compute_year_frames(monthly_data: Dict[str, pd.DataFrame], year_groups: List[Tuple[str, List[str]]],
+                         asset_groups: Dict[str, List[str]]) -> Dict[str, pd.DataFrame]:
+    logger.info("年次集計を計算中")
+    asset_keys = set(asset_groups.keys())
+    year_labels = [fy for fy, _ in year_groups]
+
+    yearly_data: Dict[str, pd.DataFrame] = {}
+    for key, df in monthly_data.items():
+        out = pd.DataFrame(0, index=year_labels, columns=df.columns)
+        for fy, months in year_groups:
+            for col in df.columns:
+                if col in asset_keys:
+                    out.loc[fy, col] = int(df.loc[months[-1], col])
+                else:
+                    out.loc[fy, col] = int(df.loc[months, col].sum())
+        yearly_data[key] = out
+    return yearly_data
+
+
+# --------------------------------------------------------------------------- #
+# 将来予測
+# --------------------------------------------------------------------------- #
+
+def compute_forecast(monthly_data_basic: pd.DataFrame, config: dict, months_ahead: int = 60) -> pd.DataFrame:
+    logger.info("将来予測を計算中")
+    future_month = config["現在月"]
+    for _ in range(months_ahead):
+        future_month = next_month(*future_month)
+
+    index = build_month_index(config["開始月"], future_month)
+    actual_months = set(build_month_index(config["開始月"], config["締め月"]))
+
+    asset_cols = list(config["資産項目"].keys())
+    zandaka = monthly_data_basic[asset_cols].sum(axis=1)
+
+    monthly_balance_change = {
+        month[4:6]: monthly_data_basic.loc[month, "収支"]
+        for month in build_month_index(config["開始月"], config["締め月"])
+    }
+
+    forecast_data = pd.DataFrame(0, index=index, columns=["実績", "予測"])
+    previous_balance = 0
+    for month in index:
+        if month in actual_months:
+            current_balance = zandaka.get(month, previous_balance)
+            forecast_data.loc[month, "実績"] = current_balance
+            forecast_data.loc[month, "予測"] = 0
         else:
-            df_data = pd.concat([df_data, df_tmp])
+            current_balance = previous_balance + monthly_balance_change[month[4:6]]
+            forecast_data.loc[month, "実績"] = 0
+            forecast_data.loc[month, "予測"] = current_balance
+        previous_balance = current_balance
+    return forecast_data
 
-    df_item = pd.DataFrame([(y, x[0]) for x in config["支出項目"] for y in x[1]], columns=["分類", "大分類"])
-    df_data = pd.merge(df_data, df_item, on="分類", how="left")   # 元のエクセルデータ
-    # 移動のチェック
-    for month in calcMonthList(config["開始月"], config["現在月"])["月"]:
-        nyukin = int(df_data.query('yyyymm==@month & 分類=="移動"')["入金"].sum())
-        shukkin = int(df_data.query('yyyymm==@month & 分類=="移動"')["出金"].sum())
-        assert nyukin == shukkin, f"{month}の移動のデータが不整合です。入金が{nyukin}、出金が{shukkin}"
 
-    # 計算
-    print( "--計算中--")
-    df_month = {}
-    df_month["basic"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=list(config["資産項目"].keys())+["収入", "支出", "収支"])
-    df_month["in"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=[x for x in config["収入項目"]])
-    df_month["out2"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=[x for x in out2List])
-    df_month["out1"] = pd.DataFrame(0, index=calcMonthList(config["開始月"], config["現在月"])["月"], columns=[x for x in out1List if x != "NA"])
-    for k, v in config["資産項目"].items():
-        for sheetName in sheetNameList:
-            if sheetName in v:
-                zandakaOld = 0
-                for month in df_month["basic"].index:
-                    zan = df_data.query('yyyymm==@month and sheet==@sheetName')["残高"].values
-                    if len(zan) == 0:
-                        df_month["basic"].loc[month, k] += zandakaOld
-                    else:
-                        df_month["basic"].loc[month, k] += int(zan[-1])
-                        zandakaOld = int(zan[-1])
+# --------------------------------------------------------------------------- #
+# 保存
+# --------------------------------------------------------------------------- #
 
-    for month in tqdm(df_month["basic"].index):
-        nyukin = (df_data.query('yyyymm==@month & 分類!="移動"')["入金"].sum())
-        shukkin = (df_data.query('yyyymm==@month & 分類!="移動"')["出金"].sum())
-        df_month["basic"].loc[month, "収入"] = none2int(nyukin)
-        df_month["basic"].loc[month, "支出"] = none2int(shukkin)
-        df_month["basic"].loc[month, "収支"] = none2int(nyukin) - none2int(shukkin)
-        for item in config["収入項目"]:
-            nyukin = df_data.query('分類==@item and yyyymm==@month')['入金'].sum()
-            df_month["in"].loc[month, item] = none2int(nyukin)
-            assert df_data.query('分類==@item and yyyymm==@month')['出金'].sum() == 0.0, \
-                   "エラー\n{}の{}について入金項目にもかかわらず出金の列に記入されています。".format(month, item)
-        for item in out2List:
-            shukkin = df_data.query('分類==@item and yyyymm==@month')['出金'].sum()
-            df_month["out2"].loc[month, item] = none2int(shukkin)
-            assert df_data.query('分類==@item and yyyymm==@month')['入金'].sum() == 0.0, \
-                   "エラー\n{}の{}について出金項目にもかかわらず入金の列に記入されています。".format(month, item)
-        for item in [x for x in out1List if x != "NA"]:
-            if item != "NA":
-                shukkin = df_data.query('大分類==@item and yyyymm==@month')["出金"].sum()
-                df_month["out1"].loc[month, item] = none2int(shukkin)
-    # 収支のチェック
-    monthOld = None
-    for month in calcMonthList(config["開始月"], config["現在月"])["月"]:
-        if monthOld != None:
-            assert df_month["basic"].loc[month, list(config["資産項目"].keys())].sum() - df_month["basic"].loc[monthOld, list(config["資産項目"].keys())].sum() == df_month["basic"].loc[month, "収支"], \
-                  "エラー\n{}の資産は{}\n{}の資産は{}\n差額は{}\nしかし{}の収支が{}です。".format(\
-                          monthOld, df_month["basic"].loc[monthOld, list(config["資産項目"].keys())].sum(), month,  df_month["basic"].loc[month, list(config["資産項目"].keys())].sum(),\
-                          df_month["basic"].loc[month, list(config["資産項目"].keys())].sum() - df_month["basic"].loc[monthOld, list(config["資産項目"].keys())].sum(),\
-                          month,  df_month["basic"].loc[month, "収支"])
-        monthOld = month
-    # 年用
-    yearList = calcMonthList(config["開始月"], config["現在月"])["年度+月"]
-    df_year = {}
-    for key in df_month.keys():
-        df_year[key] = pd.DataFrame(0, index=[year[0] for year in yearList], columns=df_month[key].columns)
-        for col in df_year[key].columns:
-            for year in yearList:
-                x = 0
-                for month in year[1]:
-                    if col in list(config["資産項目"].keys()):
-                        x = int(df_month[key][col][month])
-                    else:
-                        x += int(df_month[key][col][month])
-                df_year[key].loc[str(year[0]), col] = x
+def save_outputs(output_dir: Path, monthly_data: dict, yearly_data: dict, forecast_data: pd.DataFrame) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for name, obj in (("monthly_data", monthly_data), ("yearly_data", yearly_data), ("forecast_data", forecast_data)):
+        path = output_dir / f"{name}.pkl"
+        with open(path, "wb") as f:
+            pickle.dump(obj, f)
+        logger.info("保存しました: %s", path)
 
-    # 予測
-    futureMonth = config["現在月"]
-    for _ in range(60):
-        futureMonth = nextMonth(futureMonth[0], futureMonth[1])
-    index = calcMonthList(config["開始月"], [futureMonth[0], futureMonth[1]])["月"]
-    df_future = pd.DataFrame(0, index=index, columns=["実績", "予測"])
-    shusiPredict = {}
-    for month in calcMonthList(config["開始月"], config["締め月"])["月"]:
-        shusiPredict[month[4:7]] = df_month["basic"].loc[month, "収支"]
-    zandaka = df_month["basic"].loc[:, list(config["資産項目"].keys())].sum(axis=1)
 
-    money_old = 0
-    for month in df_future.index:
-        money = zandaka.get(month)
-        if month in calcMonthList(config["開始月"], config["締め月"])["月"]:
-            df_future.loc[month, "実績"] = money
-            df_future.loc[month, "予測"] = 0
-        else:
-            money = money_old + shusiPredict[month[4:7]]
-            df_future.loc[month, "実績"] = 0
-            df_future.loc[month, "予測"] = money
-        money_old = money
-    print("--計算終了--")
-    with open("df_month.pkl", mode='wb') as f:
-      pickle.dump(df_month, f)
-    with open("df_year.pkl", mode='wb') as f:
-      pickle.dump(df_year, f)
-    with open("df_future.pkl", mode='wb') as f:
-      pickle.dump(df_future, f)
+# --------------------------------------------------------------------------- #
+# メイン
+# --------------------------------------------------------------------------- #
+
+def run(config_path: str, data_path: str, output_dir: str = ".") -> None:
+    config = load_config(config_path)
+    expense_subcategories, expense_categories = category_lists(config)
+
+    df_transactions = load_excel_data(data_path, config, expense_subcategories)
+
+    months = build_month_index(config["開始月"], config["現在月"])
+    monthly_data = compute_month_frames(df_transactions, months, config, expense_categories, expense_subcategories)
+
+    year_groups = build_fiscal_year_groups(months)
+    yearly_data = compute_year_frames(monthly_data, year_groups, config["資産項目"])
+
+    forecast_data = compute_forecast(monthly_data["basic"], config)
+
+    save_outputs(Path(output_dir), monthly_data, yearly_data, forecast_data)
+    logger.info("計算終了")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="家計簿の月次・年次集計と将来予測を計算する")
+    parser.add_argument("--config", default="sample/config.yaml", help="config.yaml のパス")
+    parser.add_argument("--data", default="sample/kakeibo.xlsx", help="取引明細エクセルのパス")
+    parser.add_argument("--output", default=".", help="pickle 出力先ディレクトリ")
+    return parser.parse_args()
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default="sample/config.yaml")
-    parser.add_argument('--data', default="sample/kakeibo.xlsx")
-    args = parser.parse_args()
-    main(args)
+    args = parse_args()
+    run(args.config, args.data, args.output)

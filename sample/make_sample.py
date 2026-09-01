@@ -1,12 +1,10 @@
 import pandas as pd
 import numpy as np
-import openpyxl
 import yaml
 
 def calcMonthList(startMonth, finishMonth):
     y = startMonth[0]
     m = startMonth[1]
-    yearList = []
     monthList = []
     while True:
         monthList.append(str(100 * y + m))
