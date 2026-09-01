@@ -73,7 +73,7 @@ def getTable_index(my, item):
     elif slct == "out2":
         df = df["expense_subcategory"].loc[:, [df["expense_subcategory"].columns[int(out2Num)]]]
     elif slct == "in":
-        df = df["in"]
+        df = df["income"]
     out = []
     out.append([])
     out[-1].append(col)
@@ -191,13 +191,13 @@ def getGraph_snapMonth(slct, my):
     elif len(my) == 4:
         df = read_yearly_data()
     else:
-        df = df_month
+        raise ValueError(f"Invalid value for my: {my!r}.")
     if slct == "out":
         df = df["expense_category"]
     elif slct == "in":
         df = df["income"]
-    if my == "undefined":
-        my = df.index[-1]
+    else:
+        raise ValueError(f"Invalid value for slct: {slct!r}.")
     con = {}
     con["type"] = "pie"
     con["options"] = {"responsive": True}
@@ -217,15 +217,15 @@ def getTable_snapMonth(slct, my):
     elif len(my) == 4:
         df = read_yearly_data()
     else:
-        raise XXX
+        raise ValueError(f"Invalid value for my: {my!r}.")
     if slct == "in":
         df = df["income"]
     elif slct == "out":
         df = df["expense_subcategory"]
     elif slct == "inout":
         df = df["basic"].loc[:, ["収入", "支出", "収支"]]
-    if my == "undefined":
-        my = df.index[-1]
+    else:
+        raise ValueError(f"Invalid value for slct: {slct!r}.")
     out = []
     out.append([])
     out[-1].append("項目")
