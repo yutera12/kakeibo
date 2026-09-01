@@ -224,13 +224,13 @@ def compute_month_frames(df_transactions: pd.DataFrame, months: List[str], confi
     monthly_data["basic"]["支出"] = monthly_totals["出金"].astype(int)
     monthly_data["basic"]["収支"] = monthly_data["basic"]["収入"] - monthly_data["basic"]["支出"]
 
-    monthly_data["in"] = compute_category_pivot(
+    monthly_data["income"] = compute_category_pivot(
         df_transactions, months, config["収入項目"], "分類", "入金", "出金"
     )
-    monthly_data["out2"] = compute_category_pivot(
+    monthly_data["expense_subcategory"] = compute_category_pivot(
         df_transactions, months, expense_subcategories, "分類", "出金", "入金"
     )
-    monthly_data["out1"] = compute_category_pivot(
+    monthly_data["expense_category"] = compute_category_pivot(
         df_transactions, months, [x for x in expense_categories if x != "NA"], "大分類", "出金", "入金"
     )
 

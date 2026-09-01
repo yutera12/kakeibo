@@ -5,17 +5,17 @@ import os
 import yaml
 
 def read_df_month():
-    with open('df_month.pkl', mode='rb') as f:
+    with open('monthly_data.pkl', mode='rb') as f:
         df = pickle.load(f)
     return df
 
 def read_df_year():
-    with open('df_year.pkl', mode='rb') as f:
+    with open('yearly_data.pkl', mode='rb') as f:
         df = pickle.load(f)
     return df
 
 def read_df_future():
-    with open('df_future.pkl', mode='rb') as f:
+    with open('forecast_data.pkl', mode='rb') as f:
         df = pickle.load(f)
     return df
 
@@ -40,7 +40,7 @@ app.config['JSON_AS_ASCII'] = False
 @app.route('/getOut2')
 def getOut2():
     df = read_df_month()
-    return json.dumps(df["out2"].columns.tolist(), ensure_ascii=False)
+    return json.dumps(df["expense_subcategory"].columns.tolist(), ensure_ascii=False)
 
 @app.route('/getMonth')
 def getMonth():
@@ -69,9 +69,9 @@ def getTable_index(my, item):
     elif slct == "inout":
         df = df["basic"].loc[:, ["収入", "支出", "収支"]]
     elif slct == "out1":
-        df = df["out1"]
+        df = df["expense_category"]
     elif slct == "out2":
-        df = df["out2"].loc[:, [df["out2"].columns[int(out2Num)]]]
+        df = df["expense_subcategory"].loc[:, [df["expense_subcategory"].columns[int(out2Num)]]]
     elif slct == "in":
         df = df["in"]
     out = []
@@ -136,11 +136,11 @@ def getGraph_index(my, item):
             }
     else:
         if slct == "out1":
-            df = df["out1"]
+            df = df["expense_category"]
         elif slct == "out2":
-            df = df["out2"].loc[:, [df["out2"].columns[int(out2Num)]]]
+            df = df["expense_subcategory"].loc[:, [df["expense_subcategory"].columns[int(out2Num)]]]
         elif slct == "in":
-            df = df["in"]
+            df = df["income"]
         elif slct == "asset":
             df = df["basic"].drop(columns=["収入", "支出", "収支"])
         out = {}
@@ -193,9 +193,9 @@ def getGraph_snapMonth(slct, my):
     else:
         df = df_month
     if slct == "out":
-        df = df["out1"]
+        df = df["expense_category"]
     elif slct == "in":
-        df = df["in"]
+        df = df["income"]
     if my == "undefined":
         my = df.index[-1]
     con = {}
@@ -203,7 +203,7 @@ def getGraph_snapMonth(slct, my):
     con["options"] = {"responsive": True}
     con["data"] = {}
     con["data"]["datasets"] = [{}]
-    tmp = df.copy().loc[my, :].values
+    tmp = df.copy().loc[my, :].values.copy()
     tmp[tmp < 0] = 0
     con["data"]["datasets"][0]["data"] = tmp.tolist()
     con["data"]["datasets"][0]["backgroundColor"] = [colors[i % len(colors)][0] for i in range(len(df.columns))]
@@ -217,11 +217,11 @@ def getTable_snapMonth(slct, my):
     elif len(my) == 4:
         df = read_df_year()
     else:
-        df = df_month
+        raise XXX
     if slct == "in":
-        df = df["in"]
+        df = df["income"]
     elif slct == "out":
-        df = df["out2"]
+        df = df["expense_subcategory"]
     elif slct == "inout":
         df = df["basic"].loc[:, ["収入", "支出", "収支"]]
     if my == "undefined":
