@@ -107,7 +107,7 @@
   </div>
 
   <script>
-    const sleep = waitTime => new Promise( resolve => setTimeout(resolve, waitTime) );
+    const sleep = waitTime => new Promise( resolve => setTimeexpense(resolve, waitTime) );
 
     Vue.component('tbl', {
       props: ['data'],
