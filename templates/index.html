@@ -200,7 +200,7 @@
           this.updateGraph('/getGraph_index/' + this.selectedUnit + "/income,None", 'canvas_income')
           this.updateGraph('/getGraph_index/' + this.selectedUnit + "/expense_category,None", 'canvas_expense_category')
           for(var i=0; i<this.expenseSubcategory_length; i++) {
-            this.updateGraphExpenseSubcategory2('/getGraph_index/' + this.selectedUnit + "/expense_subcategory," + String(i), 'canvas_expense_subcategory_' + String(i), i)
+            this.updateGraphExpensesubcategory('/getGraph_index/' + this.selectedUnit + "/expense_subcategory," + String(i), 'canvas_expense_subcategory_' + String(i), i)
           }
           if (this.selectedOption == 'グラフ＆表'){
             // 表の作成
@@ -246,7 +246,7 @@
               this[canvas] = x
             })
         },
-        updateGraphExpenseSubcategory2: function(path, canvas, i){
+        updateGraphExpensesubcategory: function(path, canvas, i){
           axios
             .get(path)
             .then(response => {

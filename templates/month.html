@@ -107,7 +107,7 @@
   </div>
 
   <script>
-    const sleep = waitTime => new Promise( resolve => setTimeexpense(resolve, waitTime) );
+    const sleep = waitTime => new Promise( resolve => setTimeout(resolve, waitTime) );
 
     Vue.component('tbl', {
       props: ['data'],
@@ -137,7 +137,7 @@
         tbl_balance: [[]],
         tbl_income: [[]],
         tbl_expense: [[]],
-        in: '',
+        income: '',
         expense: '',
         created: [false, false]
       },
