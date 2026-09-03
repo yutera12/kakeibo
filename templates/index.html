@@ -24,7 +24,7 @@
           <div class="navbar-nav">
             <a class="nav-item nav-link active" href="index">推移</a>
             <a class="nav-item nav-link" href="month">月毎・年度毎</a>
-            <a class="nav-item nav-link" href="future">予測</a>
+            <a class="nav-item nav-link" href="forecast">予測</a>
           </div>
         </nav>
       </header>
@@ -58,11 +58,11 @@
               </li>
               <ul>
                 <li><a href="#link_asset">資産</a></li>
-                <li><a href="#link_inout">収支</a></li>
-                <li><a href="#link_in">収入</a></li>
-                <li><a href="#link_out1">支出大項目</a></li>
-                <li><a href="#link_out2">支出小項目</a></li>
-                <out2_bar v-bind:names="out2_name"></out2_bar>
+                <li><a href="#link_balance">収支</a></li>
+                <li><a href="#link_income">収入</a></li>
+                <li><a href="#link_expense_category">支出大項目</a></li>
+                <li><a href="#link_expense_subcategory">支出小項目</a></li>
+                <expense_subcategory_bar v-bind:names="expenseSubcategory_name"></expense_subcategory_bar>
               </ul>
             </ul>
           </aside>
@@ -75,20 +75,20 @@
             <canvas id="canvas_asset" height="30%" width="100%"></canvas>
             <tbl v-bind:data="tbl_asset"></tbl>
 
-            <a id="link_inout" class="anchor"><h2>収支</h2></a>
-            <canvas id="canvas_inout" height="30%" width="100%"></canvas>
-            <tbl v-bind:data="tbl_inout"></tbl>
+            <a id="link_balance" class="anchor"><h2>収支</h2></a>
+            <canvas id="canvas_balance" height="30%" width="100%"></canvas>
+            <tbl v-bind:data="tbl_balance"></tbl>
 
-            <a id="link_in" class="anchor"><h2>収入</h2></a>
-            <canvas id="canvas_in" height="30%" width="100%"></canvas>
-            <tbl v-bind:data="tbl_in"></tbl>
+            <a id="link_income" class="anchor"><h2>収入</h2></a>
+            <canvas id="canvas_income" height="30%" width="100%"></canvas>
+            <tbl v-bind:data="tbl_income"></tbl>
 
-            <a id="link_out1" class="anchor"><h2>支出大項目</h2></a>
-            <canvas id="canvas_out1" height="30%" width="100%"></canvas>
-            <tbl v-bind:data="tbl_out1"></tbl>
+            <a id="link_expense_category" class="anchor"><h2>支出大項目</h2></a>
+            <canvas id="canvas_expense_category" height="30%" width="100%"></canvas>
+            <tbl v-bind:data="tbl_expense_category"></tbl>
 
-            <a id="link_out2" class="anchor"><h2>支出小項目</h2></a>
-            <out2_main v-bind:option="selectedOption" v-bind:names="out2_name" v-bind:tbls="out2_tbl"></out2_main>
+            <a id="link_expense_subcategory" class="anchor"><h2>支出小項目</h2></a>
+            <expense_subcategory_main v-bind:option="selectedOption" v-bind:names="expenseSubcategory_name" v-bind:tbls="expenseSubcategory_tbl"></expense_subcategory_main>
             <!--メインここまで-->
           </main>
           <footer>
@@ -123,12 +123,12 @@
       delimiters: ['[[', ']]']
     };
 
-    const out2_mainComponent = {
+    const expenseSubcategory_mainComponent = {
       template: `
         <div>
           <div v-for="(name, index) in names">
-            <a v-bind:id="'link_out2_' + index" class="anchor"><h3>[[name]]</h3></a>
-            <canvas v-bind:id="'canvas_out2_' + index" height="30%" width="100%"></canvas>
+            <a v-bind:id="'link_expense_subcategory_' + index" class="anchor"><h3>[[name]]</h3></a>
+            <canvas v-bind:id="'canvas_expense_subcategory_' + index" height="30%" width="100%"></canvas>
             <tbl v-bind:data="extract(tbls, index)"> </tbl>
           </div>
         </div>
@@ -147,11 +147,11 @@
       components: {"tbl": tblComponent}
     };
 
-    const out2_barComponent = {
+    const expenseSubcategory_barComponent = {
       template: `
         <ul>
           <div v-for="(name, index) in names">
-            <li><a v-bind:href="'#link_out2_' + index">[[name]]</a></li>
+            <li><a v-bind:href="'#link_expense_subcategory_' + index">[[name]]</a></li>
           </div>
         </ul>
       `,
@@ -175,55 +175,55 @@
         selectedOption : 'グラフのみ',
         units: [{id: 'year', name:'年度'}, {id: 'month', name:'月'}],
         selectedUnit : 'month',
-        out2Len: 0,
+        expenseSubcategory_length: 0,
         tbl_asset: [[]],
-        tbl_inout: [[]],
-        tbl_in: [[]],
-        tbl_out1: [[]],
-        out2_name: [],
-        out2_tbl: [],
+        tbl_balance: [[]],
+        tbl_income: [[]],
+        tbl_expense_category: [[]],
+        expenseSubcategory_name: [],
+        expenseSubcategory_tbl: [],
         canvas_asset: '',
-        canvas_inout: '',
-        canvas_in: '',
-        canvas_out1: '',
-        canvas_out2: [],
+        canvas_balance: '',
+        canvas_income: '',
+        canvas_expense_category: '',
+        canvas_expense_subcategory: [],
         created: false
       },
-      components: {"tbl": tblComponent, "out2_main": out2_mainComponent, "out2_bar": out2_barComponent},
+      components: {"tbl": tblComponent, "expense_subcategory_main": expenseSubcategory_mainComponent, "expense_subcategory_bar": expenseSubcategory_barComponent},
       delimiters: ['[[', ']]'],
 
       methods: {
         update: function(){
           // グラフの作成
           this.updateGraph('/getGraph_index/' + this.selectedUnit + "/asset,None", 'canvas_asset')
-          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/inout,None", 'canvas_inout')
-          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/in,None", 'canvas_in')
-          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/out1,None", 'canvas_out1')
-          for(var i=0; i<this.out2Len; i++) {
-            this.updateGraphOut2('/getGraph_index/' + this.selectedUnit + "/out2," + String(i), 'canvas_out2_' + String(i), i)
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/balance,None", 'canvas_balance')
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/income,None", 'canvas_income')
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/expense_category,None", 'canvas_expense_category')
+          for(var i=0; i<this.expenseSubcategory_length; i++) {
+            this.updateGraphExpenseSubcategory2('/getGraph_index/' + this.selectedUnit + "/expense_subcategory," + String(i), 'canvas_expense_subcategory_' + String(i), i)
           }
           if (this.selectedOption == 'グラフ＆表'){
             // 表の作成
             this.updateTbl('/getTable_index/' + this.selectedUnit + '/asset,None', 'tbl_asset')
-            this.updateTbl('/getTable_index/' + this.selectedUnit + '/inout,None', 'tbl_inout')
-            this.updateTbl('/getTable_index/' + this.selectedUnit + '/in,None', 'tbl_in')
-            this.updateTbl('/getTable_index/' + this.selectedUnit + '/out1,None', 'tbl_out1')
-            this.out2_tbl = []
-            for(var i=0; i<this.out2Len; i++) {
-              path = '/getTable_index/' + this.selectedUnit + '/out2,' + String(i)
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/balance,None', 'tbl_balance')
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/income,None', 'tbl_income')
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/expense_category,None', 'tbl_expense_category')
+            this.expenseSubcategory_tbl = []
+            for(var i=0; i<this.expenseSubcategory_length; i++) {
+              path = '/getTable_index/' + this.selectedUnit + '/expense_subcategory,' + String(i)
               axios
                 .get(path)
                 .then(response => {
-                  this.out2_tbl.push(response.data);
+                  this.expenseSubcategory_tbl.push(response.data);
                 })
             }
           } else {
             // 表の削除
             this.tbl_asset = [[]]
-            this.tbl_inout = [[]]
-            this.tbl_in = [[]]
-            this.tbl_out1 = [[]]
-            this.out2_tbl = []
+            this.tbl_balance = [[]]
+            this.tbl_income = [[]]
+            this.tbl_expense_category = [[]]
+            this.expenseSubcategory_tbl = []
           }
         },
         updateTbl: function(path, prop){
@@ -246,28 +246,28 @@
               this[canvas] = x
             })
         },
-        updateGraphOut2: function(path, canvas, i){
+        updateGraphExpenseSubcategory2: function(path, canvas, i){
           axios
             .get(path)
             .then(response => {
               var ctx = document.getElementById(canvas).getContext('2d')
-              if (this.canvas_out2[i] == ''){
+              if (this.canvas_expense_subcategory[i] == ''){
               } else {
-                this.canvas_out2[i].destroy()
+                this.canvas_expense_subcategory[i].destroy()
               }
               var x = new Chart(ctx, response.data)
-              this.canvas_out2[i] = x
+              this.canvas_expense_subcategory[i] = x
             })
         }
       },
       created: function(){
         axios
-          .get('/getOut2')
+          .get('/getExpenseSubcategory')
           .then(response => {
-            this.out2_name = response.data
-            this.out2Len = response.data.length
-            for(var i=0; i<this.out2Len; i++) {
-              this.canvas_out2.push('')
+            this.expenseSubcategory_name = response.data
+            this.expenseSubcategory_length = response.data.length
+            for(var i=0; i<this.expenseSubcategory_length; i++) {
+              this.canvas_expense_subcategory.push('')
             }
             this.created = true
           })

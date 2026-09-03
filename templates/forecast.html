@@ -23,7 +23,7 @@
         <div class="navbar-nav">
           <a class="nav-item nav-link" href="index">推移</a>
           <a class="nav-item nav-link" href="month">月毎・年度毎</a>
-          <a class="nav-item nav-link active" href="future">予測</a>
+          <a class="nav-item nav-link active" href="forecast">予測</a>
         </div>
       </nav>
     </header>
@@ -50,7 +50,7 @@
 
   <script>
     axios
-      .get('/getTable_future')
+      .get('/getTable_forecast')
       .then(response => {
         new Vue({
           el: '#tbl',
@@ -73,7 +73,7 @@
       })
 
     axios
-      .get('/getGraph_future')
+      .get('/getGraph_forecast')
       .then(response => {
         chart = new Chart('graph', response.data)
       })

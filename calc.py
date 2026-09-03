@@ -3,9 +3,6 @@
 
 エクセルの取引明細と config.yaml の項目定義を読み込み、
 月次・年次の収支サマリーと将来予測を計算して pickle に保存する。
-
-元スクリプトのロジック（各種整合性チェック含む）は変更していない。
-可読性・保守性・実行効率の向上のために関数分割とベクトル化を行った。
 """
 
 from __future__ import annotations
@@ -34,27 +31,27 @@ class ValidationError(Exception):
 # 月・年度まわりのユーティリティ
 # --------------------------------------------------------------------------- #
 
-def next_month(y: int, m: int) -> YearMonth:
+def next_month(year: int, month: int) -> YearMonth:
     """翌月の (年, 月) を返す。"""
-    if m == 12:
-        return y + 1, 1
-    return y, m + 1
+    if month == 12:
+        return year + 1, 1
+    return year, month + 1
 
 
-def fiscal_year(y: int, m: int) -> str:
+def fiscal_year(year: int, month: int) -> str:
     """4月始まりの年度を文字列で返す（例: 2023年4月〜2024年3月 -> "2023"）。"""
-    return str(int(np.floor((100 * y + m - 4) / 100)))
+    return str(int(np.floor((100 * year + month - 4) / 100)))
 
 
 def build_month_index(start: YearMonth, finish: YearMonth) -> List[str]:
     """start から finish までの "YYYYMM" 文字列のリストを返す（両端含む）。"""
-    y, m = start
+    year, month = start
     months = []
     while True:
-        months.append(f"{100 * y + m}")
-        if (y, m) == tuple(finish):
+        months.append(f"{100 * year + month}")
+        if (year, month) == tuple(finish):
             break
-        y, m = next_month(y, m)
+        year, month = next_month(year, month)
     return months
 
 
@@ -66,10 +63,6 @@ def build_fiscal_year_groups(months: List[str]) -> List[Tuple[str, List[str]]]:
         fy = fiscal_year(y, m)
         groups.setdefault(fy, []).append(month)
     return list(groups.items())
-
-
-def none2int(val) -> int:
-    return 0 if val is None or (isinstance(val, float) and np.isnan(val)) else int(val)
 
 
 # --------------------------------------------------------------------------- #
@@ -99,12 +92,12 @@ def validate_sheet(df: pd.DataFrame, sheet_name: str, config: dict, expense_subc
         raise ValidationError(f"{sheet_name}シートのカラム名が不適切です")
 
     valid_categories = set(config["収入項目"] + expense_subcategories) | {"移動"}
-    for j, x in enumerate(df["分類"].values):
-        if j == 0:
+    for i, x in enumerate(df["分類"].values):
+        if i == 0:
             if not pd.isna(x):
                 raise ValidationError(f"{sheet_name}シートの１行目のデータには残高のみ記載してください")
         elif x not in valid_categories:
-            raise ValidationError(f"{sheet_name}シートの{j}行目のデータの分類「{x}」が不適切です")
+            raise ValidationError(f"{sheet_name}シートの{i}行目のデータの分類「{x}」が不適切です")
 
     if df["yyyymm"].isna().any():
         bad = df.index[df["yyyymm"].isna()][0]
@@ -148,11 +141,11 @@ def load_excel_data(path: str, config: dict, expense_subcategories: List[str]) -
     )
     df_transactions = pd.merge(df_transactions, df_item, on="分類", how="left")
 
-    validate_transfers(df_transactions, config)
+    validate_transfers(df_transactions)
     return df_transactions
 
 
-def validate_transfers(df_transactions: pd.DataFrame, config: dict) -> None:
+def validate_transfers(df_transactions: pd.DataFrame) -> None:
     """「移動」区分の入金・出金が月ごとに一致することを確認する。"""
     transfer_transactions = df_transactions[df_transactions["分類"] == "移動"]
     monthly_totals = transfer_transactions.groupby("yyyymm")[["入金", "出金"]].sum()
@@ -212,17 +205,17 @@ def compute_month_frames(df_transactions: pd.DataFrame, months: List[str], confi
     monthly_data: Dict[str, pd.DataFrame] = {}
 
     asset_groups = config["資産項目"]
-    monthly_data["basic"] = compute_asset_balances(df_transactions, months, asset_groups)
-    monthly_data["basic"]["収入"] = 0
-    monthly_data["basic"]["支出"] = 0
-    monthly_data["basic"]["収支"] = 0
+    monthly_data["summary"] = compute_asset_balances(df_transactions, months, asset_groups)
+    monthly_data["summary"]["収入"] = 0
+    monthly_data["summary"]["支出"] = 0
+    monthly_data["summary"]["収支"] = 0
 
     non_transfer_transactions = df_transactions[df_transactions["分類"] != "移動"]
     monthly_totals = non_transfer_transactions.groupby("yyyymm")[["入金", "出金"]].sum()
     monthly_totals = monthly_totals.reindex(months, fill_value=0)
-    monthly_data["basic"]["収入"] = monthly_totals["入金"].astype(int)
-    monthly_data["basic"]["支出"] = monthly_totals["出金"].astype(int)
-    monthly_data["basic"]["収支"] = monthly_data["basic"]["収入"] - monthly_data["basic"]["支出"]
+    monthly_data["summary"]["収入"] = monthly_totals["入金"].astype(int)
+    monthly_data["summary"]["支出"] = monthly_totals["出金"].astype(int)
+    monthly_data["summary"]["収支"] = monthly_data["summary"]["収入"] - monthly_data["summary"]["支出"]
 
     monthly_data["income"] = compute_category_pivot(
         df_transactions, months, config["収入項目"], "分類", "入金", "出金"
@@ -234,7 +227,7 @@ def compute_month_frames(df_transactions: pd.DataFrame, months: List[str], confi
         df_transactions, months, [x for x in expense_categories if x != "NA"], "大分類", "出金", "入金"
     )
 
-    validate_balance_consistency(monthly_data["basic"], months, asset_groups)
+    validate_balance_consistency(monthly_data["summary"], months, asset_groups)
     return monthly_data
 
 
@@ -280,7 +273,7 @@ def compute_year_frames(monthly_data: Dict[str, pd.DataFrame], year_groups: List
 # 将来予測
 # --------------------------------------------------------------------------- #
 
-def compute_forecast(monthly_data_basic: pd.DataFrame, config: dict, months_ahead: int = 60) -> pd.DataFrame:
+def compute_forecast(monthly_data_summary: pd.DataFrame, config: dict, months_ahead: int = 60) -> pd.DataFrame:
     logger.info("将来予測を計算中")
     future_month = config["現在月"]
     for _ in range(months_ahead):
@@ -290,10 +283,10 @@ def compute_forecast(monthly_data_basic: pd.DataFrame, config: dict, months_ahea
     actual_months = set(build_month_index(config["開始月"], config["締め月"]))
 
     asset_cols = list(config["資産項目"].keys())
-    zandaka = monthly_data_basic[asset_cols].sum(axis=1)
+    zandaka = monthly_data_summary[asset_cols].sum(axis=1)
 
     monthly_balance_change = {
-        month[4:6]: monthly_data_basic.loc[month, "収支"]
+        month[4:6]: monthly_data_summary.loc[month, "収支"]
         for month in build_month_index(config["開始月"], config["締め月"])
     }
 
@@ -341,7 +334,7 @@ def run(config_path: str, data_path: str, output_dir: str = ".") -> None:
     year_groups = build_fiscal_year_groups(months)
     yearly_data = compute_year_frames(monthly_data, year_groups, config["資産項目"])
 
-    forecast_data = compute_forecast(monthly_data["basic"], config)
+    forecast_data = compute_forecast(monthly_data["summary"], config)
 
     save_outputs(Path(output_dir), monthly_data, yearly_data, forecast_data)
     logger.info("計算終了")

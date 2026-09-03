@@ -1,7 +1,6 @@
-from flask import Flask, render_template, request, make_response, jsonify
+from flask import Flask, render_template
 import json
 import pickle
-import os
 import yaml
 
 def read_monthly_data():
@@ -32,32 +31,31 @@ colors = [
 ]
 
 app = Flask(__name__)
-app.config['JSON_AS_ASCII'] = False 
 
 #########
 # 共通用 #
 #########
-@app.route('/getOut2')
-def getOut2():
+@app.route('/getExpenseSubcategory')
+def getExpenseSubcategory():
     df = read_monthly_data()
     return json.dumps(df["expense_subcategory"].columns.tolist(), ensure_ascii=False)
 
 @app.route('/getMonth')
 def getMonth():
     df = read_monthly_data()
-    return json.dumps(df["basic"].index.tolist(), ensure_ascii=False)
+    return json.dumps(df["summary"].index.tolist(), ensure_ascii=False)
 
 @app.route('/getYear')
 def getYear():
     df = read_yearly_data()
-    return json.dumps(df["basic"].index.tolist(), ensure_ascii=False)
+    return json.dumps(df["summary"].index.tolist(), ensure_ascii=False)
 
 ################
 # index.html用 #
 ################
 @app.route('/getTable_index/<my>/<item>/')
 def getTable_index(my, item):
-    slct, out2Num = item.split(",")
+    slct, categoryNum = item.split(",")
     if my == 'year':
         df = read_yearly_data()
         col = '年度'
@@ -65,14 +63,14 @@ def getTable_index(my, item):
         df = read_monthly_data()
         col = '月'
     if slct == "asset":
-        df = df["basic"].drop(columns=["収入", "支出", "収支"])
-    elif slct == "inout":
-        df = df["basic"].loc[:, ["収入", "支出", "収支"]]
-    elif slct == "out1":
+        df = df["summary"].drop(columns=["収入", "支出", "収支"])
+    elif slct == "balance":
+        df = df["summary"].loc[:, ["収入", "支出", "収支"]]
+    elif slct == "expense_category":
         df = df["expense_category"]
-    elif slct == "out2":
-        df = df["expense_subcategory"].loc[:, [df["expense_subcategory"].columns[int(out2Num)]]]
-    elif slct == "in":
+    elif slct == "expense_subcategory":
+        df = df["expense_subcategory"].loc[:, [df["expense_subcategory"].columns[int(categoryNum)]]]
+    elif slct == "income":
         df = df["income"]
     out = []
     out.append([])
@@ -90,13 +88,13 @@ def getTable_index(my, item):
 def getGraph_index(my, item):
     with open('config.yaml', "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    slct, out2Num = item.split(",")
+    slct, categoryNum = item.split(",")
     if my == 'year':
         df = read_yearly_data()
     elif my == 'month':
         df = read_monthly_data()
-    if slct == "inout":
-        df = df["basic"].drop(columns= list(config["資産項目"].keys()))
+    if slct == "balance":
+        df = df["summary"].drop(columns= list(config["資産項目"].keys()))
         chartData = {}
         chartData["labels"] = df.index.tolist()
         chartData["datasets"] = []
@@ -135,19 +133,19 @@ def getGraph_index(my, item):
                 "scales"  : {"yAxes": [{"ticks": {"beginAtZero": True}}]}
             }
     else:
-        if slct == "out1":
+        if slct == "expense_category":
             df = df["expense_category"]
-        elif slct == "out2":
-            df = df["expense_subcategory"].loc[:, [df["expense_subcategory"].columns[int(out2Num)]]]
-        elif slct == "in":
+        elif slct == "expense_subcategory":
+            df = df["expense_subcategory"].loc[:, [df["expense_subcategory"].columns[int(categoryNum)]]]
+        elif slct == "income":
             df = df["income"]
         elif slct == "asset":
-            df = df["basic"].drop(columns=["収入", "支出", "収支"])
+            df = df["summary"].drop(columns=["収入", "支出", "収支"])
         out = {}
         out["type"] = "line"
 
         yAxesConf = None
-        if slct == "in":
+        if slct == "income":
             if config["yAxes"].get("収入"):
                 if my == "year":
                     yAxesConf = config["yAxes"].get("収入").get("year")
@@ -192,9 +190,9 @@ def getGraph_snapMonth(slct, my):
         df = read_yearly_data()
     else:
         raise ValueError(f"Invalid value for my: {my!r}.")
-    if slct == "out":
+    if slct == "expense":
         df = df["expense_category"]
-    elif slct == "in":
+    elif slct == "income":
         df = df["income"]
     else:
         raise ValueError(f"Invalid value for slct: {slct!r}.")
@@ -218,12 +216,12 @@ def getTable_snapMonth(slct, my):
         df = read_yearly_data()
     else:
         raise ValueError(f"Invalid value for my: {my!r}.")
-    if slct == "in":
+    if slct == "income":
         df = df["income"]
-    elif slct == "out":
+    elif slct == "expense":
         df = df["expense_subcategory"]
-    elif slct == "inout":
-        df = df["basic"].loc[:, ["収入", "支出", "収支"]]
+    elif slct == "balance":
+        df = df["summary"].loc[:, ["収入", "支出", "収支"]]
     else:
         raise ValueError(f"Invalid value for slct: {slct!r}.")
     out = []
@@ -239,8 +237,8 @@ def getTable_snapMonth(slct, my):
 #################
 # future.html用 #
 #################
-@app.route('/getTable_future')
-def getTable_future():
+@app.route('/getTable_forecast')
+def getTable_forecast():
     df_future = read_forecast_data()
     out = []
     out.append([])
@@ -254,7 +252,7 @@ def getTable_future():
         out[-1].append("{:,}".format(int(df_future.loc[month, "予測"])))
     return json.dumps(out, ensure_ascii=False)
 
-@app.route('/getGraph_future')
+@app.route('/getGraph_forecast')
 def getGraph_future():
     df_future = read_forecast_data()
     out = {}
@@ -278,54 +276,6 @@ def getGraph_future():
         out["data"]["datasets"][-1]["data"] = df_future.loc[:, column].tolist()
     return json.dumps(out, ensure_ascii=False)
 
-###############
-# menu.html用 #
-###############
-@app.route('/get_config', methods=['GET'])
-def read_config():
-    with open('config.yaml', "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-    return json.dumps(config, ensure_ascii=False)
-
-@app.route('/post_config', methods=['POST'])
-def upload_config():
-    conf = yaml.safe_load(request.data.decode('utf-8'))
-    sishutu = yaml.safe_load(conf['sishutu'])
-    print(conf)
-    shunyu = yaml.safe_load(conf['shunyu'])
-    start = conf['start']
-    finish = conf['finish']
-    current = conf['current']
-    with open('config.yaml', 'w', encoding='utf-8') as f:
-        yaml.dump({'開始月': start,
-                   '締め月': finish,
-                   '現在月': current,
-                   '収入項目': shunyu,
-                   '支出項目': sishutu}, f, encoding='utf8', allow_unicode=True)
-    return 'OK'
-
-app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024 * 1024
-@app.route('/data/upload', methods=['POST'])
-def upload_multipart():
-    if not 'yourFileKey' in request.files.keys():
-        return make_response(jsonify({'result':'アップロードが失敗しました'}))
-    file = request.files['yourFileKey']
-    fileName = file.filename
-    dir = 'upload'
-    os.makedirs(dir, exist_ok=True)
-    file.save(os.path.join(dir, 'data'))
-    return make_response(jsonify({'result':'アップロードが完了しました'}))
-
-@app.route('/execute', methods=['POST'])
-def execute():
-    import calc
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default="config.yaml")
-    parser.add_argument('--data', default="upload/data")
-    args = parser.parse_args()
-    calc.main(args)
-    return "OK"
 
 #####################
 # render_template用 #
@@ -335,9 +285,9 @@ def execute():
 def index():
     return render_template('index.html')
 
-@app.route('/future')
-def future():
-    return render_template('future.html')
+@app.route('/forecast')
+def forecast():
+    return render_template('forecast.html')
 
 @app.route('/month')
 def month():

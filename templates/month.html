@@ -24,7 +24,7 @@
           <div class="navbar-nav">
             <a class="nav-item nav-link" href="index">推移</a>
             <a class="nav-item nav-link active" href="month">月毎・年度毎</a>
-            <a class="nav-item nav-link" href="future">予測</a>
+            <a class="nav-item nav-link" href="forecast">予測</a>
           </div>
         </nav>
       </header>
@@ -78,19 +78,19 @@
             <div class="row">
               <div class="col-6">
                 <h2>収支</h2>
-                <tbl v-bind:data="tbl_inout"></tbl>
+                <tbl v-bind:data="tbl_balance"></tbl>
               </div>
             </div>
             <div class="row">
               <div class="col-6">
                 <h2>収入</h2>
-                <canvas id="in" height="40%" width="100%"></canvas>
-                <tbl v-bind:data="tbl_in"></tbl>
+                <canvas id="income" height="40%" width="100%"></canvas>
+                <tbl v-bind:data="tbl_income"></tbl>
               </div>
               <div class="col-6">
                 <h2>支出</h2>
-                <canvas id="out" height="40%" width="100%"></canvas>
-                <tbl v-bind:data="tbl_out"></tbl>
+                <canvas id="expense" height="40%" width="100%"></canvas>
+                <tbl v-bind:data="tbl_expense"></tbl>
               </div>
             </div>
           </main>
@@ -107,7 +107,7 @@
   </div>
 
   <script>
-    const sleep = waitTime => new Promise( resolve => setTimeout(resolve, waitTime) );
+    const sleep = waitTime => new Promise( resolve => setTimeexpense(resolve, waitTime) );
 
     Vue.component('tbl', {
       props: ['data'],
@@ -134,11 +134,11 @@
         monthSelected: '',
         months: [],
         years: [],
-        tbl_inout: [[]],
-        tbl_in: [[]],
-        tbl_out: [[]],
+        tbl_balance: [[]],
+        tbl_income: [[]],
+        tbl_expense: [[]],
         in: '',
-        out: '',
+        expense: '',
         created: [false, false]
       },
       delimiters: ['[[', ']]'],
@@ -157,12 +157,12 @@
           } else {
             select = this.yearSelected
           }
-          this.updateTbl('/getTable_snapMonth/inout/' + select, 'tbl_inout')
-          this.updateTbl('/getTable_snapMonth/in/' + select, 'tbl_in')
-          this.updateTbl('/getTable_snapMonth/out/' + select, 'tbl_out')
+          this.updateTbl('/getTable_snapMonth/balance/' + select, 'tbl_balance')
+          this.updateTbl('/getTable_snapMonth/income/' + select, 'tbl_income')
+          this.updateTbl('/getTable_snapMonth/expense/' + select, 'tbl_expense')
 
-          this.updateGraph('/getGraph_snapMonth/in/' + select, 'in')
-          this.updateGraph('/getGraph_snapMonth/out/' + select, 'out')
+          this.updateGraph('/getGraph_snapMonth/income/' + select, 'income')
+          this.updateGraph('/getGraph_snapMonth/expense/' + select, 'expense')
         },
         updateTbl: function(path, prop){
           axios
