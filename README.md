@@ -10,27 +10,8 @@
 * `server.py`
   * 要約したデータを元に、各種APIを提供
   * 使用した主なライブラリは`flask`
-  * APIの一覧は下表
-  * APIへのアクセス結果は`curl`コマンドで確かめることができる。
-    * `curl http://localhost:5000/getMonth`
-    * `curl --noproxy localhost http://localhost:5000/getMonth`
 
-    | URL | 機能 |
-    | --- | --- |
-    | `/index` | `index.html`の表示 | 
-    | `/month` | `month.html`の表示 | 
-    | `/future` | `future.html`の表示 | 
-    | `/getOut2` | 支出小項目の項目一覧を返す |
-    | `/getMonth` | 表示対象の月の一覧を返す |
-    | `/getYear` | 表示対象の年の一覧を返す |
-    | `/getTable_index/<item>` | `index.html`で使用するテーブルのデータを返す |
-    | `/getGraph_index/<item>` | `index.html`で使用するテーブルのグラフを返す |
-    | `/getGraph_snapMonth/<slct>/<my>` | `month.html`で使用するテーブルのデータを返す |
-    | `/getTable_snapMonth/<slct>/<my>` | `month.html`で使用するテーブルのグラフを返す |
-    | `/getTable_future` | `future.html`で使用するテーブルのデータを返す |
-    | `/getGraph_future` | `future.html`で使用するテーブルのグラフを返す |
-
-* `index.html`, `future.html`, `month.html`
+* `index.html`, `month.html`, `forecast.html`
   * それぞれ推移ページ、月毎・年毎ページ、予測ページ用のhtmlファイル
   * 使用した主なライブラリは、`boostrap4`、`vue`、`chartjs`
 
