@@ -31,6 +31,19 @@ class ValidationError(Exception):
 # 月・年度まわりのユーティリティ
 # --------------------------------------------------------------------------- #
 
+def validate_year_month(value: YearMonth, label: str) -> YearMonth:
+    """年と月の組を検証して返す。"""
+    try:
+        year, month = value
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"{label}は (年, 月) の形式で指定してください") from exc
+    if not isinstance(year, int) or isinstance(year, bool) or not isinstance(month, int) or isinstance(month, bool):
+        raise ValidationError(f"{label}には整数の年と月を指定してください")
+    if not 1 <= month <= 12:
+        raise ValidationError(f"{label}の月は1〜12で指定してください")
+    return year, month
+
+
 def next_month(year: int, month: int) -> YearMonth:
     """翌月の (年, 月) を返す。"""
     if month == 12:
@@ -45,11 +58,16 @@ def fiscal_year(year: int, month: int) -> str:
 
 def build_month_index(start: YearMonth, finish: YearMonth) -> List[str]:
     """start から finish までの "YYYYMM" 文字列のリストを返す（両端含む）。"""
+    start = validate_year_month(start, "開始月")
+    finish = validate_year_month(finish, "終了月")
+    if start > finish:
+        raise ValidationError("開始月は終了月以前にしてください")
+
     year, month = start
     months = []
     while True:
         months.append(f"{100 * year + month}")
-        if (year, month) == tuple(finish):
+        if (year, month) == finish:
             break
         year, month = next_month(year, month)
     return months
@@ -105,6 +123,9 @@ def validate_sheet(df: pd.DataFrame, sheet_name: str, config: dict, expense_subc
 
     if not df["yyyymm"].between(190000, 210000, inclusive="neither").all():
         raise ValidationError(f"{sheet_name}のyyyymmが不正")
+
+    if not (df["yyyymm"] % 100).between(1, 12).all():
+        raise ValidationError(f"{sheet_name}のyyyymmに不正な月が含まれています")
 
     if not df["yyyymm"].is_monotonic_increasing:
         raise ValidationError(f"{sheet_name}のyyyymmが不正")
