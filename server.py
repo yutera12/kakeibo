@@ -2,19 +2,22 @@ from flask import Flask, render_template
 import json
 import pickle
 import yaml
+from pathlib import Path
+
+PKL_DIR = "pkl"
 
 def read_monthly_data():
-    with open('monthly_data.pkl', mode='rb') as f:
+    with open(Path(PKL_DIR, 'monthly_data.pkl'), mode='rb') as f:
         df = pickle.load(f)
     return df
 
 def read_yearly_data():
-    with open('yearly_data.pkl', mode='rb') as f:
+    with open(Path(PKL_DIR, 'yearly_data.pkl'), mode='rb') as f:
         df = pickle.load(f)
     return df
 
 def read_forecast_data():
-    with open('forecast_data.pkl', mode='rb') as f:
+    with open(Path(PKL_DIR, 'forecast_data.pkl'), mode='rb') as f:
         df = pickle.load(f)
     return df
 

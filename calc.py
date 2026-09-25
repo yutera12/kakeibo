@@ -365,10 +365,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="家計簿の月次・年次集計と将来予測を計算する")
     parser.add_argument("--config", default="sample/config.yaml", help="config.yaml のパス")
     parser.add_argument("--data", default="sample/kakeibo.xlsx", help="取引明細エクセルのパス")
-    parser.add_argument("--output", default=".", help="pickle 出力先ディレクトリ")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    run(args.config, args.data, args.output)
+    run(args.config, args.data, "pkl")
