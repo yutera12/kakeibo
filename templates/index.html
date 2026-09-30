@@ -76,6 +76,15 @@
             <tbl v-bind:data="tbl_asset"></tbl>
 
             <a id="link_balance" class="anchor"><h2>収支</h2></a>
+
+            <div class="small">
+              大型収支を含める:
+              <label v-for="item in large_items" v-bind:key="item" class="mr-3">
+                <input type="checkbox" v-model="selectedLarge" v-bind:value="item" v-on:change="update">
+                [[ item ]]
+              </label>
+            </div>
+
             <canvas id="canvas_balance" height="30%" width="100%"></canvas>
             <tbl v-bind:data="tbl_balance"></tbl>
 
@@ -84,6 +93,13 @@
             <tbl v-bind:data="tbl_income"></tbl>
 
             <a id="link_expense_category" class="anchor"><h2>支出大項目</h2></a>
+            <div class="small">
+              大型支出を含める:
+              <label v-for="item in large_expense_items" v-bind:key="item" class="mr-3">
+                <input type="checkbox" v-model="selectedLargeExpense" v-bind:value="item" v-on:change="update">
+                [[ item ]]
+              </label>
+            </div>
             <canvas id="canvas_expense_category" height="30%" width="100%"></canvas>
             <tbl v-bind:data="tbl_expense_category"></tbl>
 
@@ -175,7 +191,11 @@
         selectedOption : 'グラフのみ',
         units: [{id: 'year', name:'年度'}, {id: 'month', name:'月'}],
         selectedUnit : 'month',
+        selectedLarge : [],
+        selectedLargeExpense: [],
         expenseSubcategory_length: 0,
+        large_items: [],
+        large_expense_items: [],
         tbl_asset: [[]],
         tbl_balance: [[]],
         tbl_income: [[]],
@@ -187,7 +207,7 @@
         canvas_income: '',
         canvas_expense_category: '',
         canvas_expense_subcategory: [],
-        created: false
+        created: [false, false, false]
       },
       components: {"tbl": tblComponent, "expense_subcategory_main": expenseSubcategory_mainComponent, "expense_subcategory_bar": expenseSubcategory_barComponent},
       delimiters: ['[[', ']]'],
@@ -195,27 +215,27 @@
       methods: {
         update: function(){
           // グラフの作成
-          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/asset,None", 'canvas_asset')
-          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/balance,None", 'canvas_balance')
-          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/income,None", 'canvas_income')
-          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/expense_category,None", 'canvas_expense_category')
+          const large = { large: this.selectedLarge.join(',') }
+          const largeExpense = { largeExpense: this.selectedLargeExpense.join(',') }
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/asset", 'canvas_asset')
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + '/balance', 'canvas_balance', large)
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/income", 'canvas_income')
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + "/expense_category", 'canvas_expense_category', largeExpense)
           for(var i=0; i<this.expenseSubcategory_length; i++) {
-            this.updateGraphExpensesubcategory('/getGraph_index/' + this.selectedUnit + "/expense_subcategory," + String(i), 'canvas_expense_subcategory_' + String(i), i)
+            this.updateGraphExpensesubcategory('/getGraph_index/' + this.selectedUnit + "/expense_subcategory", 'canvas_expense_subcategory_' + String(i), i)
           }
           if (this.selectedOption == 'グラフ＆表'){
             // 表の作成
-            this.updateTbl('/getTable_index/' + this.selectedUnit + '/asset,None', 'tbl_asset')
-            this.updateTbl('/getTable_index/' + this.selectedUnit + '/balance,None', 'tbl_balance')
-            this.updateTbl('/getTable_index/' + this.selectedUnit + '/income,None', 'tbl_income')
-            this.updateTbl('/getTable_index/' + this.selectedUnit + '/expense_category,None', 'tbl_expense_category')
-            this.expenseSubcategory_tbl = []
-            for(var i=0; i<this.expenseSubcategory_length; i++) {
-              path = '/getTable_index/' + this.selectedUnit + '/expense_subcategory,' + String(i)
-              axios
-                .get(path)
-                .then(response => {
-                  this.expenseSubcategory_tbl.push(response.data);
-                })
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/asset', 'tbl_asset')
+            this.updateTbl('/getTable_index/' + this.selectedUnit + "/balance", 'tbl_balance', large)
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/income', 'tbl_income')
+            this.updateTbl('/getTable_index/' + this.selectedUnit + '/expense_category', 'tbl_expense_category')
+            this.expenseSubcategory_tbl = new Array(this.expenseSubcategory_length)
+            for (let i = 0; i < this.expenseSubcategory_length; i++) {
+              path = '/getTable_index/' + this.selectedUnit + '/expense_subcategory'
+              axios.get(path, {params: {num: i}}).then(response => {
+                this.$set(this.expenseSubcategory_tbl, i, response.data)
+              })
             }
           } else {
             // 表の削除
@@ -226,29 +246,24 @@
             this.expenseSubcategory_tbl = []
           }
         },
-        updateTbl: function(path, prop){
+        updateTbl: function(path, prop, params){
           axios
-            .get(path)
+            .get(path, { params: params })
             .then(response => {
               this[prop] = response.data;
             })
         },
-        updateGraph: function(path, canvas){
-          axios
-            .get(path)
+        updateGraph: function(path, canvas, params){
+          axios.get(path, { params: params })
             .then(response => {
               var ctx = document.getElementById(canvas).getContext('2d')
-              if (this[canvas] == ''){
-              } else {
-                this[canvas].destroy()
-              }
-              var x = new Chart(ctx, response.data)
-              this[canvas] = x
+              if (this[canvas] != '') this[canvas].destroy()
+              this[canvas] = new Chart(ctx, response.data)
             })
         },
         updateGraphExpensesubcategory: function(path, canvas, i){
           axios
-            .get(path)
+            .get(path, { params: {num: i}})
             .then(response => {
               var ctx = document.getElementById(canvas).getContext('2d')
               if (this.canvas_expense_subcategory[i] == ''){
@@ -269,11 +284,24 @@
             for(var i=0; i<this.expenseSubcategory_length; i++) {
               this.canvas_expense_subcategory.push('')
             }
-            this.created = true
+            this.created[0] = true
           })
+        axios
+          .get('/get_large_items')
+          .then(response => {
+            this.large_items = response.data
+            this.created[1] = true
+          })
+        axios
+          .get('/get_large_expense_items')
+          .then(response => {
+            this.large_expense_items = response.data
+            this.created[2] = true
+          })
+
       },
       mounted: async function(){
-        while(!this.created){
+        while((!this.created[0] || (!this.created[1]))){
           await sleep(100)
         }
         this.update()
