@@ -186,7 +186,7 @@ def _minor_expense_frame(data, category_data, option):
     return data["expense"][list(mapping.values())[int(option)]]
 
 
-def _balance_frame(data, exclude_items):
+def _balance_frame(data, exclude_items, window=1):
     """収入・支出の集計 (index.html の balance 用)。"""
     df = data["transactions"].copy()
     df = df[~df.index.get_level_values(1).isin(exclude_items)]
@@ -196,7 +196,7 @@ def _balance_frame(data, exclude_items):
         .rename(columns={"入金": "収入", "出金": "支出"})
     )
     df["収支"] = df["収入"] - df["支出"]
-    return df
+    return df.rolling(window).mean().fillna(0).astype(int)
 
 def _with_moving_average(df, unit):
     """列が1本だけの df に、unit に応じた移動平均の列を追加して返す。"""
@@ -218,7 +218,11 @@ def _index_frame(data: Dict[str, pd.DataFrame], unit: str, target: str, params) 
         exclude_items = []
 
     if target == "balance":
-        return _balance_frame(data, exclude_items)
+        if params.get("checkedMA") == "true":
+            window = MA_SETTINGS[unit][0]
+        else:
+            window = 1
+        return _balance_frame(data, exclude_items, window)
     if target == "asset":
         return _asset_frame(data)
     if target == "expense_category":

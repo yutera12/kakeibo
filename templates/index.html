@@ -76,7 +76,12 @@
             <tbl v-bind:data="tbl_asset"></tbl>
 
             <a id="link_balance" class="anchor"><h2>収支</h2></a>
-
+            <div>
+              <label class="mr-3">
+                <input type="checkbox" v-model="checkedMA" v-on:change="update">
+                移動平均
+              </label>
+            </div>
             <div class="small">
               大型収支を含める:
               <label v-for="item in large_items" v-bind:key="item" class="mr-3">
@@ -194,6 +199,7 @@
         selectedLarge : [],
         selectedLargeExpense: [],
         expenseSubcategory_length: 0,
+        checkedMA: false,
         large_items: [],
         large_expense_items: [],
         tbl_asset: [[]],
@@ -217,8 +223,9 @@
           // グラフの作成
           const large = { large: this.selectedLarge.join(',') }
           const largeExpense = { largeExpense: this.selectedLargeExpense.join(',') }
+          const checkedMA = {checkedMA: this.checkedMA}
           this.updateGraph('/getGraph_index/' + this.selectedUnit + "/asset", 'canvas_asset')
-          this.updateGraph('/getGraph_index/' + this.selectedUnit + '/balance', 'canvas_balance', large)
+          this.updateGraph('/getGraph_index/' + this.selectedUnit + '/balance', 'canvas_balance', {...large, ...checkedMA})
           this.updateGraph('/getGraph_index/' + this.selectedUnit + "/income", 'canvas_income')
           this.updateGraph('/getGraph_index/' + this.selectedUnit + "/expense_category", 'canvas_expense_category', largeExpense)
           for(var i=0; i<this.expenseSubcategory_length; i++) {
@@ -227,7 +234,7 @@
           if (this.selectedOption == 'グラフ＆表'){
             // 表の作成
             this.updateTbl('/getTable_index/' + this.selectedUnit + '/asset', 'tbl_asset')
-            this.updateTbl('/getTable_index/' + this.selectedUnit + "/balance", 'tbl_balance', large)
+            this.updateTbl('/getTable_index/' + this.selectedUnit + "/balance", 'tbl_balance', {...large, ...checkedMA})
             this.updateTbl('/getTable_index/' + this.selectedUnit + '/income', 'tbl_income')
             this.updateTbl('/getTable_index/' + this.selectedUnit + '/expense_category', 'tbl_expense_category')
             this.expenseSubcategory_tbl = new Array(this.expenseSubcategory_length)
