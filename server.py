@@ -6,11 +6,13 @@ from pathlib import Path
 import pandas as pd
 import yaml
 from flask import Flask, render_template, request
+from typing import List, Literal, Tuple, Dict
 
 PKL_DIR = Path("pkl")
 CONFIG_PATH = "config.yaml"
 BALANCE_COLUMNS = ["収入", "支出", "収支"]
 LARGE_ITEMS_KEY = "大型収支項目"
+
 # 単位ごとの移動平均設定: (窓幅, ラベル)
 MA_SETTINGS = {
     "month": (12, "12ヶ月移動平均"),
@@ -44,28 +46,52 @@ app = Flask(__name__)
 # ---------------------------------------------------------------------------
 # データ読み込み
 # ---------------------------------------------------------------------------
-def _read_pickle(name):
+def _read_pickle(name: str):
     with open(PKL_DIR / name, mode='rb') as f:
         return pickle.load(f)
 
 
-def read_monthly_data():
+def read_monthly_data() -> Dict[str, pd.DataFrame]:
+    """
+    {
+        "balance_and_cashflow": pd.DataFrame,
+        "transaction": pd.DataFrame,
+        "income": pd.DataFrame,
+        "expense": pd.DataFrame
+    }
+    を返す
+    """
     return _read_pickle('monthly_data.pkl')
 
 
-def read_yearly_data():
+def read_yearly_data() -> Dict[str, pd.DataFrame]:
+    """
+    {
+        "balance_and_cashflow": pd.DataFrame,
+        "transaction": pd.DataFrame,
+        "income": pd.DataFrame,
+        "expense": pd.DataFrame
+    }
+    を返す
+    """
     return _read_pickle('yearly_data.pkl')
 
 
-def read_forecast_data():
+def read_forecast_data() -> pd.DataFrame:
     return _read_pickle('forecast_data.pkl')
 
 
-def read_category_data():
+def read_category_data() -> Dict[str, Dict[str, str]]:
+    """
+    {
+        "major_expense_category_to_leaf_categories": Dict[str, str],
+        "minor_expense_category_to_leaf_categories": Dict[str, str]
+    }
+    """
     return _read_pickle('category_data.pkl')
 
 
-def read_config():
+def read_config() -> Dict:
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
@@ -77,34 +103,39 @@ def _json(obj):
     return json.dumps(obj, ensure_ascii=False)
 
 
-def _color(i, shade=0):
+def _color(i: int, shade: int=0):
     """shade: 0 = 実線色, 1 = 半透明色"""
     return COLORS[i % len(COLORS)][shade]
 
 
-def _split_param(value):
+def _split_param(value: str) -> List[str]:
     """'a,b,c' -> ['a', 'b', 'c'] (未指定・空なら [])。"""
     return value.split(",") if value else []
 
 
-def _yen(value):
+def _yen(value : str | int) -> str:
+    """数字にカンマを入れて見やすくする
+    1000000 -> 1,000,000
+    """
     return "{:,}".format(int(value))
 
 
-def _read_by_period(unit):
+def _read_by_period(unit: Literal["year", "month"]) -> Tuple[Dict[str, pd.DataFrame], str]:
     """'year' / 'month' からデータと先頭列ラベルを返す (index.html 用)。"""
     if unit == 'year':
         return read_yearly_data(), '年度'
-    if unit == 'month':
+    elif unit == 'month':
         return read_monthly_data(), '月'
     raise ValueError(f"Invalid value for unit: {unit!r}.")
 
 
-def _read_by_key(year_month):
-    """キーの長さで月次/年次を判別する (month.html 用)。"""
+def _read_by_key(year_month: str):
+    """キーの長さで月次/年次を判別する (month.html 用)。
+    year_monthの例: 2026, 202601
+    """
     if len(year_month) == 6:
         return read_monthly_data()
-    if len(year_month) == 4:
+    elif len(year_month) == 4:
         return read_yearly_data()
     raise ValueError(f"Invalid value for year_month: {year_month!r}.")
 
@@ -112,31 +143,26 @@ def _read_by_key(year_month):
 # ---------------------------------------------------------------------------
 # 除外項目の算出
 # ---------------------------------------------------------------------------
-def _unselected(candidates, selected):
+def _unselected(candidates: List[str], selected: List[str]) -> List[str]:
+    """candidateの中で、selectedに該当しないものを抽出"""
     return [item for item in candidates if item not in selected]
 
 
 def _balance_exclude_items(params):
     """収支: 選択されていない大型項目を除外する。"""
-    large_items = read_config()[LARGE_ITEMS_KEY]
+    large_items: List = read_config()[LARGE_ITEMS_KEY]
     return _unselected(large_items, _split_param(params.get("large")))
 
 
 def _expense_exclude_items(params):
     """支出カテゴリ: 支出側に存在する大型項目のうち、選択されていないものを除外する。"""
-    large_items = read_config()[LARGE_ITEMS_KEY]
+    large_items: List = read_config()[LARGE_ITEMS_KEY]  # 大型項目（収支問わず）
     mapping = read_category_data()["minor_expense_category_to_leaf_categories"]
-    expense_items = chain.from_iterable(mapping.values())
-    large_expense_items = [item for item in expense_items if item in large_items]
+    expense_items = chain.from_iterable(mapping.values())   # 支出項目
+    large_expense_items = [item for item in expense_items if item in large_items]   # 大型支出項目
     return _unselected(large_expense_items, _split_param(params.get("largeExpense")))
 
 
-def _exclude_items(target, params):
-    if target == "balance":
-        return _balance_exclude_items(params)
-    if target == "expense_category":
-        return _expense_exclude_items(params)
-    return []
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +189,7 @@ def _minor_expense_frame(data, category_data, option):
 def _balance_frame(data, exclude_items):
     """収入・支出の集計 (index.html の balance 用)。"""
     df = data["transactions"].copy()
+    df = df[~df.index.get_level_values(1).isin(exclude_items)]
     df = (
         df.groupby(level="yyyymm")[["入金", "出金"]]
         .sum()
@@ -181,9 +208,15 @@ def _with_moving_average(df, unit):
     return out
 
 
-def _index_frame(data, unit, target, params):
+def _index_frame(data: Dict[str, pd.DataFrame], unit: str, target: str, params) -> pd.DataFrame:
     """index.html の表・グラフ共通の DataFrame を返す (balance を含む)。"""
-    exclude_items = _exclude_items(target, params)
+    if target == "balance":
+        exclude_items = _balance_exclude_items(params)
+    elif target == "expense_category":
+        exclude_items = _expense_exclude_items(params)
+    else:
+        exclude_items = []
+
     if target == "balance":
         return _balance_frame(data, exclude_items)
     if target == "asset":

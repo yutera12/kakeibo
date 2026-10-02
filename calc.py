@@ -250,8 +250,11 @@ def validate_balance_consistency(df: pd.DataFrame, months: List[str], asset_grou
                 )
             )
 
-def compute_month_frames(df_transactions: pd.DataFrame, months: List[str], asset_groups: Dict[str, List[str]], income_categories: List[str],
-                          expense_categories: List[str]) -> Dict[str, pd.DataFrame]:
+def compute_month_frames(
+        df_transactions: pd.DataFrame, months: List[str], asset_groups: Dict[str, List[str]],
+        income_categories: List[str], expense_categories: List[str]
+    ) -> Dict[str, pd.DataFrame]:
+
     logger.info("月次集計を計算中")
     monthly_data: Dict[str, pd.DataFrame] = {}
 
