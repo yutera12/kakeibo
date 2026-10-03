@@ -163,7 +163,10 @@ def validate_sheet(df: pd.DataFrame, sheet_name: str, income_categories: List[st
         prev_balance = balance
 
 
-def load_excel_data(path: str, income_categories: List[str], expense_categories: List[str]) -> pd.DataFrame:
+def load_excel_data(
+        path: str, income_categories: List[str], expense_categories: List[str],
+        months: List[str]
+    ) -> pd.DataFrame:
     """全シートを読み込み・検証し、1つの DataFrame に結合する。"""
     logger.info("エクセルファイルの読み込み中: %s", path)
     sheets = pd.read_excel(path, sheet_name=None)
@@ -177,6 +180,7 @@ def load_excel_data(path: str, income_categories: List[str], expense_categories:
         frames.append(df)
 
     df_transactions = pd.concat(frames, ignore_index=True)  # 縦方向に結合
+    df_transactions = df_transactions.loc[df_transactions["yyyymm"].isin(months), :]
 
     validate_transfers(df_transactions)
     return df_transactions
@@ -376,11 +380,12 @@ def run(config_path: str, data_path: str, output_dir: str = ".") -> None:
     current_month: YearMonth = config["現在月"]
     last_closed_month: YearMonth = config["締め月"]
 
+    months = build_month_index(start_month, current_month)
+
     # 取引履歴データ
-    df_transactions = load_excel_data(data_path, income_categories, expense_categories)
+    df_transactions = load_excel_data(data_path, income_categories, expense_categories, months)
 
     # 月毎にまとめた取引履歴データ
-    months = build_month_index(start_month, current_month)
     monthly_data = compute_month_frames(df_transactions, months, asset_groups, income_categories, expense_categories)
 
     # 年毎にまとめた取引履歴データ
