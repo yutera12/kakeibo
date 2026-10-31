@@ -263,6 +263,13 @@
         updateGraph: function(path, canvas, params){
           axios.get(path, { params: params })
             .then(response => {
+              // 支出大項目のグラフだけマイナス値を0にする
+              if (canvas === 'canvas_expense_category') {
+                response.data.data.datasets.forEach(dataset => {
+                  dataset.data = dataset.data.map(value => Math.max(0, value))
+                })
+              }
+
               var ctx = document.getElementById(canvas).getContext('2d')
               if (this[canvas] != '') this[canvas].destroy()
               this[canvas] = new Chart(ctx, response.data)
